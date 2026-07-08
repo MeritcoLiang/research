@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from tsgo.runtime import run_pipeline_message
@@ -18,3 +19,10 @@ def test_v02_mock_pipeline_runs_end_to_end(tmp_path: Path) -> None:
     assert final_state.status == "validated"
     assert final_state.draft is not None
     assert "Pipeline v0.2" in final_state.draft
+
+    persisted = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[-1])
+    persisted_event_types = [event["event_type"] for event in persisted["metadata"]["events"]]
+    assert persisted["final_state_id"] == trace.final_state_id
+    assert "pipeline_completed" in persisted_event_types
+    assert "trace_persisted" in persisted_event_types
+    assert "trace_logger" in persisted["metadata"]["stage_logs"]
