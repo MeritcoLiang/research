@@ -1,8 +1,8 @@
 # Pipeline v0.1
 
-Pipeline v0.1 is the first executable shape of the Thought-State Graph Orchestration Engine. It is a linear pipeline with branching inside selected stages.
+Pipeline v0.1 是 Thought-State Graph Orchestration Engine 的第一个可执行形态。它是一条线性流水线，但在部分阶段内部允许多分支。
 
-## Stage order
+## 阶段顺序
 
 ```text
 00 Task Intake
@@ -18,20 +18,20 @@ Pipeline v0.1 is the first executable shape of the Thought-State Graph Orchestra
 10 Trace Logger
 ```
 
-## Why linear first?
+## 为什么先做线性 pipeline？
 
-A full graph engine requires stable answers to several questions:
+完整图引擎需要先稳定回答几个问题：
 
-- What is a thought state?
-- How is a thought scored?
-- How does a state record parentage?
-- How do we normalize raw generations?
-- How do we merge conflicting states?
-- What makes a final answer releasable?
+- 什么是 thought state？
+- thought 如何评分？
+- state 如何记录父子关系？
+- 原始生成结果如何规范化？
+- 冲突状态如何合并？
+- 什么样的最终答案可以发布？
 
-Pipeline v0.1 answers those questions before adding graph scheduling.
+Pipeline v0.1 先回答这些问题，再增加图调度能力。
 
-## High-level flow
+## 高层流程
 
 ```text
 user_query
@@ -48,26 +48,26 @@ user_query
   -> trace
 ```
 
-## Branching points
+## 分支点
 
-Branching is allowed inside:
+允许分支的阶段包括：
 
-- Candidate Generator: multiple strategy-conditioned drafts
-- Verifier / Scorer: multiple scoring lenses
-- Improver: multiple repair attempts for promising flawed states
-- Aggregator: claim-level synthesis from top states
+- Candidate Generator：生成多种策略条件下的草稿
+- Verifier / Scorer：使用多种评分视角
+- Improver：对有潜力但有缺陷的状态进行多次修复尝试
+- Aggregator：从 top states 做 claim 级综合
 
-## Quality gates
+## 质量门禁
 
-A state can be rejected when:
+当状态满足以下情况时，可以被拒绝：
 
-- relevance is too low
-- safety score is below threshold
-- it violates a hard user constraint
-- it contains a critical unsupported claim
-- it cannot be repaired within the configured improvement budget
+- relevance 过低
+- safety score 低于阈值
+- 违反用户硬约束
+- 包含关键且无支撑的 claim
+- 在配置的改进预算内无法修复
 
-## Default thresholds
+## 默认阈值
 
 ```python
 MIN_OVERALL_SCORE = 0.78
@@ -78,16 +78,16 @@ MIN_GROUNDEDNESS = 0.60
 MIN_SAFETY = 0.95
 ```
 
-These thresholds are static in v0.1. They can later become policy-controlled or learned.
+这些阈值在 v0.1 中是静态的。之后可以升级为 policy-controlled 或 learned。
 
-## Completion criteria
+## 完成标准
 
-Pipeline v0.1 is complete when:
+Pipeline v0.1 完成时应满足：
 
-1. every stage has a documented contract;
-2. every intermediate state is a `ThoughtState`;
-3. every candidate can be normalized into claims and assumptions;
-4. scoring is multi-dimensional;
-5. aggregation is claim-level and conflict-aware;
-6. final validation can block unsafe or low-quality responses;
-7. the entire run is logged as a replayable trace.
+1. 每个阶段都有明确文档契约；
+2. 每个中间状态都是 `ThoughtState`；
+3. 每个候选都可以被规范化为 claims 和 assumptions；
+4. 评分是多维度的；
+5. 聚合是 claim 级、冲突感知的；
+6. 最终验证可以拦截不安全或低质量回复；
+7. 整个运行过程被记录为可回放 trace。
