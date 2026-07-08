@@ -9,7 +9,6 @@ WebSocket or HTTP endpoint is equivalent to running:
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 try:
     from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -106,7 +105,7 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
             await websocket.send_json(
                 {
                     "type": "pipeline_completed",
-                    "summary": _trace_summary(session_id, trace).model_dump(),
+                    "summary": _summary_to_dict(_trace_summary(session_id, trace)),
                     "graph": graph,
                 }
             )
@@ -125,3 +124,9 @@ def _trace_summary(session_id: str, trace: Trace) -> TraceSummaryResponse:
         event_count=len(trace.metadata.get("events", [])),
         final_draft_preview=(final_state.draft or "")[:600] if final_state else None,
     )
+
+
+def _summary_to_dict(summary: TraceSummaryResponse) -> dict:
+    if hasattr(summary, "model_dump"):
+        return summary.model_dump()
+    return summary.dict()
