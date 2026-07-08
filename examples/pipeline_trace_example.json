@@ -1,0 +1,101 @@
+{
+  "id": "trace_example_001",
+  "user_query": "Design Pipeline v0.1 for a Thought-State Graph Orchestration Engine.",
+  "task_info": {
+    "task_type": "system_design",
+    "difficulty": "high",
+    "requires_tools": false,
+    "requires_citations": false,
+    "requires_computation": false,
+    "requires_user_context": true,
+    "answer_format": "technical_plan"
+  },
+  "context": {
+    "user_intent": "Land the current research discussion as an engineering pipeline.",
+    "hard_constraints": [
+      "Start with pipeline, not full graph engine.",
+      "Document every stage.",
+      "Include pseudocode for every stage."
+    ],
+    "soft_preferences": [
+      "Frontier-lab methodology",
+      "Engineering-ready structure"
+    ]
+  },
+  "rubric": {
+    "items": [
+      { "name": "correctness", "weight": 0.30 },
+      { "name": "completeness", "weight": 0.20 },
+      { "name": "actionability", "weight": 0.20 },
+      { "name": "groundedness", "weight": 0.15 },
+      { "name": "clarity", "weight": 0.10 },
+      { "name": "risk_control", "weight": 0.05 }
+    ]
+  },
+  "states": [
+    {
+      "id": "root_example_001",
+      "parent_ids": [],
+      "stage": "root",
+      "status": "draft"
+    },
+    {
+      "id": "candidate_example_001",
+      "parent_ids": ["root_example_001"],
+      "stage": "candidate_generator",
+      "status": "draft",
+      "metadata": {
+        "generation_strategy": "system_architect"
+      }
+    },
+    {
+      "id": "normalized_example_001",
+      "parent_ids": ["candidate_example_001"],
+      "stage": "thought_normalizer",
+      "status": "normalized",
+      "claims": [
+        {
+          "text": "Every intermediate thought should be represented as structured state.",
+          "claim_type": "recommendation",
+          "confidence": 0.92
+        }
+      ]
+    },
+    {
+      "id": "scored_example_001",
+      "parent_ids": ["normalized_example_001"],
+      "stage": "verifier_scorer",
+      "status": "scored",
+      "score": {
+        "correctness": 0.9,
+        "completeness": 0.82,
+        "relevance": 0.95,
+        "clarity": 0.88,
+        "groundedness": 0.75,
+        "safety": 1.0,
+        "actionability": 0.84,
+        "overall": 0.87
+      }
+    },
+    {
+      "id": "aggregated_example_001",
+      "parent_ids": ["scored_example_001"],
+      "stage": "aggregator",
+      "status": "aggregated"
+    },
+    {
+      "id": "validated_example_001",
+      "parent_ids": ["aggregated_example_001"],
+      "stage": "final_validator",
+      "status": "validated",
+      "metadata": {
+        "validation": {
+          "pass": true,
+          "blocking_issues": [],
+          "confidence": 0.87
+        }
+      }
+    }
+  ],
+  "final_state_id": "validated_example_001"
+}
