@@ -26,16 +26,10 @@ Web UI   -> browser + WebSocket events + trace file
 
 流程图的用户可见标签必须语义化，不展示内部 `state_id`。`state_id` 只作为 React Flow 的内部 key 和调试 metadata 使用。
 
-用户应该看到：
+主流程采用**从左到右**的层级展开，因为完整分支较多，横向布局比自上而下更舒展：
 
 ```text
-root
-  -> subtask s1/s2/s3/s4
-  -> candidates
-  -> normalized
-  -> scored
-  -> aggregation
-  -> validation
+root -> subtask s1/s2/s3/s4 -> candidates -> normalized -> scored -> aggregation -> validation
 ```
 
 推荐可见标签：
@@ -60,6 +54,23 @@ normalized_f91b...
 scored_42ab...
 validated_98d...
 ```
+
+## 布局规则
+
+前端 `web/src/graph/eventReducer.ts` 使用语义布局常量：
+
+```text
+root:        x = 0
+subtask:     x = 280
+candidate:   x = 600
+normalized:  x = 940
+scored:      x = 1280
+improved:    x = 1620
+aggregation: x = 1960
+validation:  x = 2260
+```
+
+每个 subtask 占一个纵向分组，每个 candidate 分支在该 subtask 分组内向下展开。normalized / scored / validation 节点优先跟随 parent 的 y 坐标，因此一条分支在视觉上形成横向链路。
 
 ## 后端结构
 
@@ -158,7 +169,7 @@ error
 │ Header: session / trace / run status                     │
 ├────────────────────┬───────────────────────┬─────────────┤
 │ ChatPanel          │ FlowCanvas             │ Inspector   │
-│ 用户输入            │ 语义化流程图             │ 节点详情      │
+│ 用户输入            │ 左到右语义流程图          │ 节点详情      │
 ├────────────────────┴───────────────────────┴─────────────┤
 │ EventTimeline                                             │
 └──────────────────────────────────────────────────────────┘
