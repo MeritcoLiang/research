@@ -1,6 +1,6 @@
-# Operator Pseudocode
+# Operator 伪代码
 
-Every operator follows the same contract:
+每个 operator 都遵循同一个契约：
 
 ```python
 class Operator:
