@@ -24,4 +24,5 @@ def test_pipeline_emits_realtime_events(tmp_path: Path) -> None:
     assert "edge_created" in event_types
     assert "stage_completed" in event_types
     assert "pipeline_completed" in event_types
+    assert "trace_persisted" in event_types
     assert trace.metadata.get("events")
