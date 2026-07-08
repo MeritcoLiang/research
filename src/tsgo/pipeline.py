@@ -1,13 +1,8 @@
-"""Deterministic Pipeline controller with optional event streaming.
-
-Pipeline v0.2 keeps the fixed stage order from v0.1, but adds an event sink so
-CLI tests and the Web UI can observe the same runtime execution path in real
-time.
-"""
+"""Deterministic Pipeline controller with optional event streaming."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .events import EventSink, NoopEventSink, TraceEvent
@@ -52,15 +47,7 @@ class PipelineConfig:
 
 
 class PipelineController:
-    """Pipeline-first orchestrator.
-
-    v0.2 is still intentionally conservative:
-    - fixed stage order
-    - structured state passed between stages
-    - traceable parent/child state lineage
-    - optional event streaming for observability
-    - no arbitrary graph scheduling yet
-    """
+    """Fixed-stage orchestrator with optional realtime event emission."""
 
     def __init__(
         self,
@@ -79,8 +66,6 @@ class PipelineController:
             self.operators.update(operators)
 
     def run(self, user_query: str) -> Trace:
-        """Run the fixed v0.2 pipeline and return a replayable trace."""
-
         trace = Trace(id=new_state_id("trace"), user_query=user_query)
         self._emit(trace, "pipeline_started", payload={"user_query": user_query})
 
@@ -121,7 +106,6 @@ class PipelineController:
                     payload={"error": str(exc), "operator": operator.__class__.__name__},
                 )
                 raise
-
             self._record_result(trace, stage_name, result)
             if result.new_states:
                 active_states = result.new_states
@@ -155,7 +139,7 @@ class PipelineController:
                     stage=stage_name,
                     state_id=state.id,
                     parent_ids=state.parent_ids,
-                    payload={"overall": state.score.overall, "score": state.score.__dict__},
+                    payload={"overall": state.score.overall, "score": asdict(state.score)},
                 )
 
         trace.metadata.setdefault("stage_logs", {})[stage_name] = {
