@@ -1,5 +1,5 @@
-import type { Edge, Node } from 'reactflow';
-import type { GraphNodeData, ServerMessage, TraceEvent } from '../types';
+import { Position, type Edge, type Node } from 'reactflow';
+import type { GraphNodeData, GraphSnapshot, ServerMessage, TraceEvent } from '../types';
 
 export type GraphState = {
   nodes: Node<GraphNodeData>[];
@@ -34,6 +34,14 @@ const SUBTASK_GAP = 360;
 const BRANCH_GAP = 80;
 
 export function reduceServerMessage(state: GraphState, message: ServerMessage): GraphState {
+  if (message.type === 'client_reset') {
+    return initialGraphState;
+  }
+
+  if (message.type === 'client_graph_snapshot') {
+    return hydrateGraphSnapshot(state, message.graph, 'snapshot_loaded');
+  }
+
   if (message.type === 'trace_event') {
     return {
       ...state,
@@ -43,19 +51,7 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
   }
 
   if (message.type === 'graph_node_upsert') {
-    const raw = message.node as Record<string, any>;
-    const node: Node<GraphNodeData> = {
-      id: String(raw.id),
-      position: semanticLayoutPosition(raw, state.nodes),
-      data: {
-        label: String(raw.label ?? raw.id),
-        stage: String(raw.stage ?? ''),
-        status: raw.status,
-        score: raw.score,
-        summary: raw.summary,
-        metadata: raw.metadata ?? {},
-      },
-    };
+    const node = graphNodeFromRaw(message.node, state.nodes);
     return {
       ...state,
       nodes: upsertNode(state.nodes, node),
@@ -63,13 +59,7 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
   }
 
   if (message.type === 'graph_edge_upsert') {
-    const raw = message.edge as Record<string, any>;
-    const edge: Edge = {
-      id: String(raw.id),
-      source: String(raw.source),
-      target: String(raw.target),
-      label: raw.edge_type ? String(raw.edge_type) : undefined,
-    };
+    const edge = graphEdgeFromRaw(message.edge);
     return {
       ...state,
       edges: upsertEdge(state.edges, edge),
@@ -88,10 +78,7 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
   }
 
   if (message.type === 'pipeline_completed') {
-    return {
-      ...state,
-      runStatus: 'pipeline_completed',
-    };
+    return hydrateGraphSnapshot(state, message.graph, 'pipeline_completed');
   }
 
   if (message.type === 'error') {
@@ -102,6 +89,51 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
   }
 
   return state;
+}
+
+function hydrateGraphSnapshot(state: GraphState, snapshot: GraphSnapshot, runStatus: string): GraphState {
+  const rawNodes = Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
+  const nodes: Node<GraphNodeData>[] = [];
+  for (const raw of rawNodes) {
+    nodes.push(graphNodeFromRaw(raw, nodes));
+  }
+
+  const rawEdges = Array.isArray(snapshot.edges) ? snapshot.edges : [];
+  const edges = rawEdges.map(graphEdgeFromRaw);
+
+  return {
+    ...state,
+    nodes,
+    edges,
+    runStatus,
+  };
+}
+
+function graphNodeFromRaw(raw: Record<string, unknown>, existingNodes: Node<GraphNodeData>[]): Node<GraphNodeData> {
+  return {
+    id: String(raw.id),
+    position: semanticLayoutPosition(raw, existingNodes),
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    data: {
+      label: String(raw.label ?? raw.id),
+      stage: String(raw.stage ?? ''),
+      status: typeof raw.status === 'string' ? raw.status : undefined,
+      score: typeof raw.score === 'number' ? raw.score : null,
+      summary: typeof raw.summary === 'string' ? raw.summary : null,
+      metadata: isRecord(raw.metadata) ? raw.metadata : {},
+    },
+  };
+}
+
+function graphEdgeFromRaw(raw: Record<string, unknown>): Edge {
+  return {
+    id: String(raw.id),
+    source: String(raw.source),
+    target: String(raw.target),
+    type: 'smoothstep',
+    label: raw.edge_type ? String(raw.edge_type) : undefined,
+  };
 }
 
 function upsertNode(nodes: Node<GraphNodeData>[], next: Node<GraphNodeData>): Node<GraphNodeData>[] {
@@ -116,10 +148,10 @@ function upsertEdge(edges: Edge[], next: Edge): Edge[] {
   return edges.map((edge) => (edge.id === next.id ? { ...edge, ...next } : edge));
 }
 
-function semanticLayoutPosition(raw: Record<string, any>, nodes: Node<GraphNodeData>[]) {
+function semanticLayoutPosition(raw: Record<string, unknown>, nodes: Node<GraphNodeData>[]) {
   const stage = String(raw.stage ?? '');
   const status = String(raw.status ?? '');
-  const metadata = (raw.metadata ?? {}) as Record<string, any>;
+  const metadata = isRecord(raw.metadata) ? raw.metadata : {};
 
   if (stage === 'root') return { x: X.root, y: ROOT_Y };
 
@@ -160,8 +192,9 @@ function semanticLayoutPosition(raw: Record<string, any>, nodes: Node<GraphNodeD
   return { x: X.candidate, y: GROUP_TOP + nodes.length * 40 };
 }
 
-function alignWithParentOrStack(raw: Record<string, any>, nodes: Node<GraphNodeData>[], x: number, fallbackY: number) {
-  const parentIds = Array.isArray(raw.metadata?.parent_ids) ? raw.metadata.parent_ids : [];
+function alignWithParentOrStack(raw: Record<string, unknown>, nodes: Node<GraphNodeData>[], x: number, fallbackY: number) {
+  const metadata = isRecord(raw.metadata) ? raw.metadata : {};
+  const parentIds = Array.isArray(metadata.parent_ids) ? metadata.parent_ids.map(String) : [];
   const parent = nodes.find((node) => parentIds.includes(node.id));
   if (parent) return { x, y: parent.position.y };
   return { x, y: fallbackY + nodes.length * 40 };
@@ -177,4 +210,8 @@ function subtaskIndex(id: string) {
   const match = id.match(/s(\d+)/);
   if (!match) return 0;
   return Number(match[1]) - 1;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
