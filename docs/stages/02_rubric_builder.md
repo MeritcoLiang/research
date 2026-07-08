@@ -1,10 +1,10 @@
 # 02 Rubric Builder
 
-## Purpose
+## 目的
 
-Create the objective function before candidates are generated. The rubric prevents the scorer and aggregator from being anchored by the first draft.
+在生成候选之前，先建立任务的目标函数。Rubric 可以避免 scorer 和 aggregator 被第一个候选答案锚定。
 
-## Inputs
+## 输入
 
 ```text
 user_query
@@ -12,9 +12,9 @@ TaskInfo
 ContextPacket
 ```
 
-## Outputs
+## 输出
 
-`Rubric`:
+`Rubric`：
 
 ```text
 items: list[RubricItem]
@@ -22,7 +22,7 @@ hard_constraints
 soft_preferences
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def build_rubric(user_query: str, task_info: TaskInfo, context: ContextPacket) -> Rubric:
@@ -44,7 +44,7 @@ def build_rubric(user_query: str, task_info: TaskInfo, context: ContextPacket) -
     )
 ```
 
-## Default general rubric
+## 默认通用 rubric
 
 ```text
 correctness: 0.30
@@ -55,16 +55,16 @@ clarity: 0.10
 risk_control: 0.05
 ```
 
-## Failure modes
+## 失败模式
 
-- Generates a generic rubric that ignores task type.
-- Gives too much weight to style and too little to correctness.
-- Does not include hard constraints.
-- Creates criteria that cannot be scored.
+- 生成了不区分任务类型的通用 rubric。
+- 过度奖励文风，低估 correctness。
+- 没有纳入硬约束。
+- 创建了无法评分的标准。
 
-## Acceptance criteria
+## 验收标准
 
-- Rubric exists before candidate generation.
-- Weights sum to a sensible objective.
-- Hard constraints are included.
-- Scorer and aggregator can consume the same rubric.
+- candidate generation 之前已经存在 rubric。
+- 权重构成合理目标函数。
+- 硬约束被纳入 rubric。
+- scorer 和 aggregator 可以使用同一套 rubric。
