@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tsgo.demo import run_demo
+from tsgo.runtime import run_pipeline_message
 
 
 def test_v02_mock_pipeline_runs_end_to_end(tmp_path: Path) -> None:
     trace_path = tmp_path / "pipeline_traces.jsonl"
-    trace = run_demo("进入 Pipeline v0.2", trace_path=str(trace_path), num_branches=2)
+    trace = run_pipeline_message("进入 Pipeline v0.2", trace_path=str(trace_path), num_branches=2)
 
     assert trace.final_state_id is not None
     assert trace_path.exists()
     assert len(trace.states) > 0
+    assert len(trace.metadata.get("events", [])) > 0
 
     final_state = next(state for state in trace.states if state.id == trace.final_state_id)
     assert final_state.status == "validated"
