@@ -97,6 +97,7 @@ python -m tsgo.demo "进入 Pipeline v0.2" \
 │       └── trace_store.py
 ├── docs/
 │   ├── architecture.md
+│   ├── json-contracts.md
 │   ├── pipeline-v0.1.md
 │   ├── pipeline-v0.2.md
 │   ├── implementation-roadmap.md
@@ -139,6 +140,7 @@ python -m tsgo.demo "进入 Pipeline v0.2" \
 - [架构说明](docs/architecture.md)
 - [Pipeline v0.1](docs/pipeline-v0.1.md)
 - [Pipeline v0.2](docs/pipeline-v0.2.md)
+- [JSON 契约](docs/json-contracts.md)
 - [阶段索引](docs/stage-index.md)
 - [Prompter 接口映射](docs/prompter-interface.md)
 - [Pipeline 伪代码](docs/pseudocode/pipeline_v0_1.md)
