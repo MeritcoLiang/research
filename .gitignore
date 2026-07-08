@@ -17,6 +17,10 @@ build/
 venv/
 env/
 
+# Runtime traces
+traces/*.json
+traces/*.jsonl
+
 # Local files
 .env
 .env.*
