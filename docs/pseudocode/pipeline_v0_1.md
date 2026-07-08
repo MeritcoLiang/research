@@ -1,4 +1,4 @@
-# Pipeline v0.1 Pseudocode
+# Pipeline v0.1 伪代码
 
 ```python
 def run_pipeline(user_query: str) -> ThoughtState:
@@ -13,23 +13,23 @@ def run_pipeline(user_query: str) -> ThoughtState:
     )
     trace.add_state(root)
 
-    # 00. Task intake
+    # 00. 任务接收与分类
     task_info = task_intake(user_query)
     trace.task_info = task_info
 
-    # 01. Context builder
+    # 01. 上下文构建
     context = build_context(user_query, task_info)
     trace.context = context
 
-    # 02. Rubric builder
+    # 02. 评分标准构建
     rubric = build_rubric(user_query, task_info, context)
     trace.rubric = rubric
 
-    # 03. Problem decomposer
+    # 03. 问题拆解
     subtasks = decompose_problem(user_query, context, rubric)
     trace.subtasks = subtasks
 
-    # 04. Candidate generator
+    # 04. 候选生成
     candidates = []
     for subtask in subtasks:
         branches = choose_branch_count(task_info, subtask)
@@ -44,21 +44,21 @@ def run_pipeline(user_query: str) -> ThoughtState:
         )
     trace.add_states(candidates)
 
-    # 05. Thought normalizer
+    # 05. Thought 规范化
     normalized = []
     for candidate in candidates:
         normalized_state = normalize_thought(candidate, context, rubric)
         normalized.append(normalized_state)
     trace.add_states(normalized)
 
-    # 06. Verifier / scorer
+    # 06. 验证与评分
     scored = []
     for state in normalized:
         scored_state = score_thought(state, context, rubric)
         scored.append(scored_state)
     trace.add_states(scored)
 
-    # 07. Improver
+    # 07. 改进
     improved = []
     for state in scored:
         if should_improve(state):
@@ -68,27 +68,27 @@ def run_pipeline(user_query: str) -> ThoughtState:
             improved.append(repaired)
     trace.add_states(improved)
 
-    # Select candidate pool
+    # 选择进入聚合的候选池
     candidate_pool = select_candidate_pool(scored + improved)
 
-    # 08. Aggregator
+    # 08. 聚合
     aggregated = aggregate_thoughts(candidate_pool, context, rubric)
     trace.add_state(aggregated)
 
-    # 09. Final validator
+    # 09. 最终验证
     validation = validate_final_answer(aggregated, user_query, context, rubric)
     if not validation.pass_:
         aggregated = repair_final_answer(aggregated, validation.required_edits)
         validation = validate_final_answer(aggregated, user_query, context, rubric)
     trace.add_state(validation.state)
 
-    # 10. Trace logger
+    # 10. Trace 记录
     persist_trace(trace)
 
     return validation.state
 ```
 
-## Candidate selection pseudocode
+## 候选选择伪代码
 
 ```python
 def should_reject(state: ThoughtState) -> bool:
@@ -114,7 +114,7 @@ def select_candidate_pool(states: list[ThoughtState]) -> list[ThoughtState]:
     return top_k(diverse, key=lambda s: s.score.overall)
 ```
 
-## Aggregation pseudocode
+## 聚合伪代码
 
 ```python
 def aggregate_thoughts(states: list[ThoughtState], context, rubric):
