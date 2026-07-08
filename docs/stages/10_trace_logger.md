@@ -1,10 +1,10 @@
 # 10 Trace Logger
 
-## Purpose
+## 目的
 
-Persist the full run so the system can be debugged, replayed, evaluated, and later converted into training or preference data.
+持久化完整运行过程，使系统可以被调试、回放、评测，并在未来转成训练或偏好数据。
 
-## Inputs
+## 输入
 
 ```text
 Trace
@@ -17,9 +17,9 @@ operator logs
 validation result
 ```
 
-## Outputs
+## 输出
 
-Persisted trace object:
+持久化后的 trace 对象：
 
 ```text
 trace_id
@@ -33,7 +33,7 @@ validation metadata
 model/tool metadata
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def persist_trace(trace: Trace, sink: TraceSink) -> None:
@@ -42,28 +42,28 @@ def persist_trace(trace: Trace, sink: TraceSink) -> None:
     sink.write(serialized)
 ```
 
-## Trace uses
+## Trace 用途
 
 ```text
-Debugging: inspect why a final answer passed.
-Eval: measure quality across a benchmark set.
-Regression: catch prompt or model changes that degrade quality.
-Optimization: compare branch counts and search policies.
-Training: export preference pairs, critiques, and repaired states.
+Debugging: 检查最终答案为什么通过。
+Eval: 在 benchmark set 上度量质量。
+Regression: 捕捉 prompt 或 model 变化造成的质量退化。
+Optimization: 比较 branch counts 和 search policies。
+Training: 导出 preference pairs、critiques 和 repaired states。
 ```
 
-## Failure modes
+## 失败模式
 
-- Logs only the final answer.
-- Drops parent-child lineage.
-- Stores raw model outputs without parsed structure.
-- Does not capture failed states, which are important training data.
-- Cannot reproduce the exact configuration used.
+- 只记录最终答案。
+- 丢失父子谱系。
+- 只保存 raw model outputs，没有保存 parsed structure。
+- 不保存 failed states，而这些往往是重要训练数据。
+- 无法复现当时使用的配置。
 
-## Acceptance criteria
+## 验收标准
 
-- Every state has an ID and parent IDs.
-- Scores and critiques are preserved.
-- Rejected states are preserved.
-- Operator logs and errors are preserved.
-- Trace includes enough metadata to replay or audit the run.
+- 每个 state 都有 ID 和 parent IDs。
+- scores 和 critiques 被保留。
+- rejected states 被保留。
+- operator logs 和 errors 被保留。
+- trace 包含足够 metadata，可以 replay 或 audit 本次运行。
