@@ -1,4 +1,4 @@
-import { Position, type Edge, type Node } from 'reactflow';
+import { MarkerType, Position, type Edge, type Node } from 'reactflow';
 import type { GraphNodeData, GraphSnapshot, ServerMessage, TraceEvent } from '../types';
 
 export type GraphState = {
@@ -131,8 +131,10 @@ function graphEdgeFromRaw(raw: Record<string, unknown>): Edge {
     id: String(raw.id),
     source: String(raw.source),
     target: String(raw.target),
-    type: 'smoothstep',
-    label: raw.edge_type ? String(raw.edge_type) : undefined,
+    type: 'default',
+    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
+    style: { strokeWidth: 1.4 },
+    data: { edgeType: raw.edge_type ? String(raw.edge_type) : 'parent' },
   };
 }
 
