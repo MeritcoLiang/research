@@ -1,10 +1,10 @@
 # 08 Aggregator
 
-## Purpose
+## 目的
 
-Synthesize top states into a final candidate answer. Aggregation is claim-level and conflict-aware; it is not a paragraph concatenation step.
+将 top states 综合成最终候选答案。Aggregation 是 claim 级、冲突感知的过程，不是简单拼接段落。
 
-## Inputs
+## 输入
 
 ```text
 Scored and improved ThoughtState[]
@@ -13,9 +13,9 @@ Rubric
 top_k_for_aggregation
 ```
 
-## Outputs
+## 输出
 
-Aggregated `ThoughtState` with:
+聚合后的 `ThoughtState`，包含：
 
 ```text
 parent_ids=[top_state_ids]
@@ -26,7 +26,7 @@ metadata.resolutions
 status="aggregated"
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def aggregate_states(states: list[ThoughtState], context: ContextPacket, rubric: Rubric) -> ThoughtState:
@@ -68,26 +68,26 @@ def aggregate_states(states: list[ThoughtState], context: ContextPacket, rubric:
     )
 ```
 
-## Conflict resolution priority
+## 冲突裁决优先级
 
 ```text
-1. User hard constraints
+1. 用户硬约束
 2. Verifier score
-3. Evidence/tool validation
-4. Engineering actionability
-5. Clarity and concision
+3. Evidence / tool validation
+4. 工程可执行性
+5. 清晰度与简洁度
 ```
 
-## Failure modes
+## 失败模式
 
-- Merges low-quality claims because they sound useful.
-- Averages conflicting recommendations instead of choosing.
-- Produces a longer answer with more hallucinations.
-- Loses uncertainty markers.
+- 因为某个 claim 看起来有用，就把低质量 claim 合并进去。
+- 对冲突建议做平均，而不是明确选择。
+- 生成更长但 hallucination 更多的答案。
+- 丢失 uncertainty 标记。
 
-## Acceptance criteria
+## 验收标准
 
-- Aggregated state has multiple parents.
-- Conflicts are recorded.
-- Low-confidence claims are removed or marked uncertain.
-- Final answer structure follows user intent, not candidate order.
+- Aggregated state 有多个 parents。
+- 冲突被记录下来。
+- 低置信 claims 被删除或标记为不确定。
+- 最终答案结构服从用户意图，而不是 candidate 顺序。
