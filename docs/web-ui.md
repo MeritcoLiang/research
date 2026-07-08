@@ -41,6 +41,7 @@ web/
 ├── package.json
 ├── index.html
 ├── tsconfig.json
+├── vite.config.ts
 └── src/
     ├── App.tsx
     ├── style.css
@@ -70,14 +71,14 @@ npm install
 npm run dev
 ```
 
-默认前端会连接：
+默认前端使用 Vite proxy，把同源 `/api` 和 `/ws` 转发到：
 
 ```text
 http://localhost:8000
 ws://localhost:8000
 ```
 
-可通过 `VITE_API_BASE` 覆盖。
+也可以通过 `VITE_API_BASE` / `VITE_WS_BASE` 覆盖。
 
 ## API
 
