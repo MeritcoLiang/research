@@ -24,6 +24,8 @@ web/dist/
 # Runtime traces
 traces/*.json
 traces/*.jsonl
+traces/**/*.json
+traces/**/*.jsonl
 
 # Local files
 .env
