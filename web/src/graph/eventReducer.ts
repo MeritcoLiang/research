@@ -17,6 +17,22 @@ export const initialGraphState: GraphState = {
   runStatus: 'idle',
 };
 
+const X = {
+  root: 0,
+  subtask: 280,
+  candidate: 600,
+  normalized: 940,
+  scored: 1280,
+  improved: 1620,
+  aggregation: 1960,
+  validation: 2260,
+};
+
+const ROOT_Y = 620;
+const GROUP_TOP = 80;
+const SUBTASK_GAP = 360;
+const BRANCH_GAP = 80;
+
 export function reduceServerMessage(state: GraphState, message: ServerMessage): GraphState {
   if (message.type === 'trace_event') {
     return {
@@ -105,45 +121,56 @@ function semanticLayoutPosition(raw: Record<string, any>, nodes: Node<GraphNodeD
   const status = String(raw.status ?? '');
   const metadata = (raw.metadata ?? {}) as Record<string, any>;
 
-  if (stage === 'root') return { x: 520, y: 0 };
+  if (stage === 'root') return { x: X.root, y: ROOT_Y };
+
   if (status === 'subtask' || stage === 'problem_decomposer') {
-    return { x: subtaskIndex(String(raw.id)) * 300, y: 150 };
+    const idx = subtaskIndex(String(raw.id));
+    return { x: X.subtask, y: GROUP_TOP + idx * SUBTASK_GAP + BRANCH_GAP * 1.5 };
   }
 
   if (stage === 'candidate_generator') {
     const subtask = String(metadata.subtask_id ?? 's1');
     const branch = Number(metadata.branch_index ?? 0);
-    return { x: subtaskIndex(subtask) * 300 + (branch % 2) * 130 - 65, y: 320 + Math.floor(branch / 2) * 90 };
+    return {
+      x: X.candidate,
+      y: GROUP_TOP + subtaskIndex(subtask) * SUBTASK_GAP + branch * BRANCH_GAP,
+    };
   }
 
   if (stage === 'thought_normalizer') {
-    return alignWithParentOrStack(raw, nodes, 540);
+    return alignWithParentOrStack(raw, nodes, X.normalized, GROUP_TOP);
   }
 
   if (stage === 'verifier_scorer') {
-    return alignWithParentOrStack(raw, nodes, 720);
+    return alignWithParentOrStack(raw, nodes, X.scored, GROUP_TOP);
   }
 
   if (stage === 'improver') {
-    return alignWithParentOrStack(raw, nodes, 900);
+    return alignWithParentOrStack(raw, nodes, X.improved, GROUP_TOP);
   }
 
   if (stage === 'aggregator') {
-    return { x: 520, y: 1080 };
+    return { x: X.aggregation, y: averageY(nodes, 'verifier_scorer') ?? ROOT_Y };
   }
 
   if (stage === 'final_validator') {
-    return { x: 520, y: 1240 };
+    return alignWithParentOrStack(raw, nodes, X.validation, ROOT_Y);
   }
 
-  return { x: 260 * (nodes.length % 4), y: 140 * Math.floor(nodes.length / 4) };
+  return { x: X.candidate, y: GROUP_TOP + nodes.length * 40 };
 }
 
-function alignWithParentOrStack(raw: Record<string, any>, nodes: Node<GraphNodeData>[], y: number) {
+function alignWithParentOrStack(raw: Record<string, any>, nodes: Node<GraphNodeData>[], x: number, fallbackY: number) {
   const parentIds = Array.isArray(raw.metadata?.parent_ids) ? raw.metadata.parent_ids : [];
   const parent = nodes.find((node) => parentIds.includes(node.id));
-  if (parent) return { x: parent.position.x, y };
-  return { x: 260 * (nodes.length % 4), y };
+  if (parent) return { x, y: parent.position.y };
+  return { x, y: fallbackY + nodes.length * 40 };
+}
+
+function averageY(nodes: Node<GraphNodeData>[], stage: string) {
+  const selected = nodes.filter((node) => node.data.stage === stage);
+  if (!selected.length) return null;
+  return selected.reduce((sum, node) => sum + node.position.y, 0) / selected.length;
 }
 
 function subtaskIndex(id: string) {
