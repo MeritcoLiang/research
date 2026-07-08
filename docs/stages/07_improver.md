@@ -1,10 +1,10 @@
 # 07 Improver
 
-## Purpose
+## 目的
 
-Repair promising but flawed states using verifier feedback. This stage should not freely regenerate the answer; it should make targeted changes that preserve correct content and fix identified weaknesses.
+根据 verifier feedback 修复有潜力但有缺陷的 states。该阶段不应该自由重写答案，而应该做有针对性的修改：保留正确内容，修复已识别问题。
 
-## Inputs
+## 输入
 
 ```text
 Scored ThoughtState[]
@@ -14,9 +14,9 @@ improvement thresholds
 max_improvement_rounds
 ```
 
-## Outputs
+## 输出
 
-Improved `ThoughtState[]` with:
+改进后的 `ThoughtState[]`，包含：
 
 ```text
 parent_ids=[original_state.id]
@@ -26,7 +26,7 @@ metadata.improvement_round
 status="improved"
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def improve_states(states: list[ThoughtState], context: ContextPacket, rubric: Rubric) -> list[ThoughtState]:
@@ -65,7 +65,7 @@ def improve_states(states: list[ThoughtState], context: ContextPacket, rubric: R
     return improved
 ```
 
-## Improve decision
+## 改进决策
 
 ```python
 def should_improve(state):
@@ -78,16 +78,16 @@ def should_improve(state):
     )
 ```
 
-## Failure modes
+## 失败模式
 
-- Rewrites from scratch and loses good content.
-- Adds new unsupported claims.
-- Improves style but not correctness.
-- Loops indefinitely.
+- 从头重写，丢失原本正确内容。
+- 增加新的无依据 claims。
+- 只改进文风，没有改进 correctness。
+- 无限循环。
 
-## Acceptance criteria
+## 验收标准
 
-- Improvement has parent lineage.
-- Changes map to verifier feedback.
-- Correct content is preserved.
-- Repaired states are re-normalized and re-scored before aggregation.
+- 改进状态有 parent lineage。
+- 修改能映射到 verifier feedback。
+- 正确内容被保留。
+- 修复后的状态进入 aggregation 前会重新 normalize 和 score。
