@@ -78,7 +78,7 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
 
             num_branches = int(message.get("num_branches", 4))
             queue: asyncio.Queue = asyncio.Queue()
-            sink = AsyncQueueEventSink(queue)
+            sink = AsyncQueueEventSink(queue=queue, loop=asyncio.get_running_loop())
 
             task = asyncio.create_task(
                 asyncio.to_thread(
