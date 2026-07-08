@@ -12,11 +12,27 @@ export function EventTimeline({ events }: Props) {
         {events.slice(-80).map((event) => (
           <li key={event.event_id}>
             <code>{event.event_type}</code>
-            {event.stage ? <span> · {event.stage}</span> : null}
-            {event.state_id ? <span> · {event.state_id}</span> : null}
+            {event.stage ? <span> · {friendlyStage(event.stage)}</span> : null}
+            {event.event_type === 'subtask_created' ? (
+              <span> · {String(event.payload.subtask_id ?? 'subtask')}</span>
+            ) : null}
           </li>
         ))}
       </ol>
     </section>
   );
+}
+
+function friendlyStage(stage: string) {
+  const map: Record<string, string> = {
+    root: 'root',
+    problem_decomposer: 'subtasks',
+    candidate_generator: 'candidates',
+    thought_normalizer: 'normalized',
+    verifier_scorer: 'scored',
+    aggregator: 'aggregation',
+    final_validator: 'validation',
+    trace_logger: 'trace',
+  };
+  return map[stage] ?? stage;
 }
