@@ -94,12 +94,7 @@ def subtask_to_node(subtask: Subtask) -> GraphNode:
 
 
 def trace_to_graph(trace: Trace) -> GraphSnapshot:
-    """Build a complete graph snapshot from a trace.
-
-    Subtasks are not ThoughtState objects, but they are important visual nodes.
-    Without them, candidate parent references such as s1/s2/s3/s4 become broken
-    graph edges.
-    """
+    """Build a complete graph snapshot from a trace."""
 
     nodes = [state_to_node(state) for state in trace.states]
     existing_node_ids = {node.id for node in nodes}
@@ -125,6 +120,7 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
 
     if event.event_type == "subtask_created":
         subtask_id = str(event.payload.get("subtask_id", event.state_id or "subtask"))
+        metadata = _metadata_with_parent_ids(event)
         return {
             "type": "graph_node_upsert",
             "trace_id": event.trace_id,
@@ -135,12 +131,13 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
                 "status": "subtask",
                 "score": None,
                 "summary": event.payload.get("question"),
-                "metadata": event.payload.get("metadata", {}),
+                "metadata": metadata,
             },
         }
 
     if event.event_type == "state_created" and event.state_id:
         label = _event_state_label(event)
+        metadata = _metadata_with_parent_ids(event)
         return {
             "type": "graph_node_upsert",
             "trace_id": event.trace_id,
@@ -151,7 +148,7 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
                 "status": event.payload.get("status"),
                 "score": event.payload.get("score"),
                 "summary": event.payload.get("summary") or event.payload.get("draft_preview"),
-                "metadata": event.payload.get("metadata", {}),
+                "metadata": metadata,
             },
         }
     if event.event_type == "edge_created":
@@ -189,6 +186,14 @@ def _append_edge(
         return
     seen_edges.add(edge_id)
     edges.append(GraphEdge(id=edge_id, source=source, target=target, edge_type=edge_type))
+
+
+def _metadata_with_parent_ids(event: TraceEvent) -> dict[str, Any]:
+    raw_metadata = event.payload.get("metadata", {})
+    metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    metadata.setdefault("internal_id", event.state_id)
+    metadata["parent_ids"] = event.parent_ids
+    return metadata
 
 
 def _state_label(state: ThoughtState) -> str:
