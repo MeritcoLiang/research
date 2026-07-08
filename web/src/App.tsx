@@ -5,11 +5,14 @@ import { EventTimeline } from './components/EventTimeline';
 import { FlowCanvas } from './components/FlowCanvas';
 import { StateInspector } from './components/StateInspector';
 import { initialGraphState, reduceServerMessage } from './graph/eventReducer';
-import type { GraphNodeData, ServerMessage } from './types';
+import type { GraphNodeData, GraphSnapshot, ServerMessage } from './types';
 import './style.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const WS_BASE = import.meta.env.VITE_WS_BASE ?? API_BASE.replace(/^http/, 'ws');
+const SESSION_KEY = 'tsgo_session_id';
+const GRAPH_KEY = 'tsgo_latest_graph';
+const SUMMARY_KEY = 'tsgo_latest_summary';
 
 function wsUrl(path: string) {
   if (WS_BASE) return `${WS_BASE}${path}`;
@@ -24,11 +27,43 @@ export default function App() {
   const [finalPreview, setFinalPreview] = useState<string | null>(null);
 
   useEffect(() => {
+    const cachedSessionId = window.localStorage.getItem(SESSION_KEY);
+    if (cachedSessionId) {
+      setSessionId(cachedSessionId);
+    } else {
+      createSession();
+    }
+
+    const cachedGraph = window.localStorage.getItem(GRAPH_KEY);
+    if (cachedGraph) {
+      try {
+        const graph = JSON.parse(cachedGraph) as GraphSnapshot;
+        dispatchGraph({ type: 'client_graph_snapshot', graph });
+      } catch {
+        window.localStorage.removeItem(GRAPH_KEY);
+      }
+    }
+
+    const cachedSummary = window.localStorage.getItem(SUMMARY_KEY);
+    if (cachedSummary) {
+      try {
+        const summary = JSON.parse(cachedSummary) as Record<string, unknown>;
+        setFinalPreview(String(summary.final_draft_preview ?? ''));
+      } catch {
+        window.localStorage.removeItem(SUMMARY_KEY);
+      }
+    }
+  }, []);
+
+  function createSession() {
     fetch(`${API_BASE}/api/sessions`, { method: 'POST' })
       .then((response) => response.json())
-      .then((payload) => setSessionId(payload.session_id))
+      .then((payload) => {
+        setSessionId(payload.session_id);
+        window.localStorage.setItem(SESSION_KEY, payload.session_id);
+      })
       .catch((error) => setFinalPreview(`创建 session 失败：${String(error)}`));
-  }, []);
+  }
 
   const selectedNode = useMemo(
     () => graphState.nodes.find((node: Node<GraphNodeData>) => node.id === selectedNodeId),
@@ -39,6 +74,10 @@ export default function App() {
     if (!sessionId) return;
     setRunning(true);
     setFinalPreview(null);
+    setSelectedNodeId(null);
+    window.localStorage.removeItem(GRAPH_KEY);
+    window.localStorage.removeItem(SUMMARY_KEY);
+    dispatchGraph({ type: 'client_reset' });
 
     const socket = new WebSocket(wsUrl(`/ws/sessions/${sessionId}`));
     socket.onopen = () => {
@@ -50,12 +89,18 @@ export default function App() {
       if (payload.type === 'pipeline_completed') {
         const summary = payload.summary as Record<string, unknown>;
         setFinalPreview(String(summary.final_draft_preview ?? ''));
+        window.localStorage.setItem(GRAPH_KEY, JSON.stringify(payload.graph));
+        window.localStorage.setItem(SUMMARY_KEY, JSON.stringify(summary));
         setRunning(false);
         socket.close();
       }
       if (payload.type === 'error') {
         setFinalPreview(payload.message);
         setRunning(false);
+        if (payload.message.includes('未知 session_id')) {
+          window.localStorage.removeItem(SESSION_KEY);
+          createSession();
+        }
       }
     };
     socket.onerror = () => {
