@@ -1,18 +1,19 @@
 """Thought-State Graph Orchestration Engine package.
 
-Pipeline v0.2 adds deterministic mock operators, a model-client boundary,
-prompter contracts, JSON parsing helpers, trace sinks, and a runnable demo.
-
-Use `python -m tsgo.demo` for the CLI demo. The demo module is intentionally
-not imported here so package import stays lightweight.
+Pipeline v0.2 exposes a shared runtime, event stream primitives, graph adapters,
+prompter contracts, JSON parsing helpers, trace sinks, and deterministic mock
+operators.
 """
 
+from .events import EventSink, InMemoryEventSink, NoopEventSink, TraceEvent
+from .graph import GraphEdge, GraphNode, GraphSnapshot, event_to_graph_delta, trace_to_graph
 from .mock_operators import build_mock_operators
 from .model_client import EchoModelClient, ModelClient
 from .operators import Operator, OperatorResult
 from .parsing import JsonParseError, parse_json, parse_json_list, parse_json_object
 from .pipeline import PipelineConfig, PipelineController
 from .prompter import DefaultPipelinePrompter, Prompter
+from .runtime import DEFAULT_QUERY, build_v02_controller, run_pipeline_message
 from .schema import (
     Claim,
     ClaimType,
@@ -68,4 +69,16 @@ __all__ = [
     "parse_json_list",
     "parse_json_object",
     "build_mock_operators",
+    "DEFAULT_QUERY",
+    "build_v02_controller",
+    "run_pipeline_message",
+    "TraceEvent",
+    "EventSink",
+    "NoopEventSink",
+    "InMemoryEventSink",
+    "GraphNode",
+    "GraphEdge",
+    "GraphSnapshot",
+    "trace_to_graph",
+    "event_to_graph_delta",
 ]
