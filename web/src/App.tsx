@@ -8,8 +8,13 @@ import { initialGraphState, reduceServerMessage } from './graph/eventReducer';
 import type { GraphNodeData, ServerMessage } from './types';
 import './style.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
-const WS_BASE = API_BASE.replace(/^http/, 'ws');
+const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+const WS_BASE = import.meta.env.VITE_WS_BASE ?? API_BASE.replace(/^http/, 'ws');
+
+function wsUrl(path: string) {
+  if (WS_BASE) return `${WS_BASE}${path}`;
+  return `${window.location.origin.replace(/^http/, 'ws')}${path}`;
+}
 
 export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -35,7 +40,7 @@ export default function App() {
     setRunning(true);
     setFinalPreview(null);
 
-    const socket = new WebSocket(`${WS_BASE}/ws/sessions/${sessionId}`);
+    const socket = new WebSocket(wsUrl(`/ws/sessions/${sessionId}`));
     socket.onopen = () => {
       socket.send(JSON.stringify({ type: 'user_message', content: message, num_branches: 4 }));
     };
