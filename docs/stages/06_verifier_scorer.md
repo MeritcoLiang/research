@@ -1,10 +1,10 @@
 # 06 Verifier / Scorer
 
-## Purpose
+## 目的
 
-Evaluate normalized thought states using the task-specific rubric. This stage should produce multi-dimensional scores, critique, critical errors, and improvement instructions.
+使用任务专属 rubric 评估 normalized thought states。该阶段应该产出多维评分、critique、critical errors 和 improvement instructions。
 
-## Inputs
+## 输入
 
 ```text
 Normalized ThoughtState[]
@@ -13,9 +13,9 @@ Rubric
 optional tool outputs
 ```
 
-## Outputs
+## 输出
 
-Scored `ThoughtState[]` with:
+评分后的 `ThoughtState[]`，包含：
 
 ```text
 score
@@ -25,7 +25,7 @@ claim verifier notes
 status="scored"
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def score_thoughts(states: list[ThoughtState], context: ContextPacket, rubric: Rubric) -> list[ThoughtState]:
@@ -57,7 +57,7 @@ def score_thoughts(states: list[ThoughtState], context: ContextPacket, rubric: R
     return scored
 ```
 
-## Scoring layers
+## 评分层级
 
 ```text
 L1: deterministic rule checks
@@ -65,17 +65,17 @@ L2: LLM judge or reward model
 L3: tool/environment validation when available
 ```
 
-## Failure modes
+## 失败模式
 
-- Uses only one overall score.
-- Rewards verbosity instead of correctness.
-- Fails to separate critical errors from minor issues.
-- Lets a candidate judge itself without independent checks.
+- 只输出单一 overall score。
+- 奖励冗长，而不是 correctness。
+- 没有区分 critical errors 和 minor issues。
+- 让 candidate 自己评判自己，缺少独立检查。
 
-## Acceptance criteria
+## 验收标准
 
-- Scores are multi-dimensional.
-- Critique is actionable.
-- Critical errors are explicitly marked.
-- Claims receive verifier notes when possible.
-- The same rubric can be used later by the aggregator.
+- 分数是多维度的。
+- Critique 是可执行的。
+- Critical errors 被显式标记。
+- 尽可能给每个 claim 附上 verifier notes。
+- 同一套 rubric 后续可以被 aggregator 使用。
