@@ -47,11 +47,22 @@ TaskType = Literal[
     "planning",
     "data",
     "decision",
+    "system_design",
+    "architecture",
     "mixed",
     "unknown",
 ]
 
 Difficulty = Literal["low", "medium", "high", "frontier"]
+StateStatus = Literal[
+    "draft",
+    "normalized",
+    "scored",
+    "improved",
+    "aggregated",
+    "validated",
+    "rejected",
+]
 
 
 @dataclass(slots=True)
@@ -213,7 +224,7 @@ class ThoughtState:
     uncertainty: list[str] = field(default_factory=list)
     failure_modes: list[str] = field(default_factory=list)
 
-    status: Literal["draft", "normalized", "scored", "improved", "aggregated", "validated", "rejected"] = "draft"
+    status: StateStatus = "draft"
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -236,6 +247,9 @@ class Trace:
 
     def add_state(self, state: ThoughtState) -> None:
         self.states.append(state)
+
+    def add_states(self, states: list[ThoughtState]) -> None:
+        self.states.extend(states)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
