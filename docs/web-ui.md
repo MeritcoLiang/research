@@ -32,6 +32,17 @@ Web UI   -> browser + WebSocket events + trace file
 root -> subtask s1/s2/s3/s4 -> candidates -> normalized -> scored -> aggregation -> validation
 ```
 
+边线使用 React Flow 默认 Bezier edge，并显式设置：
+
+```text
+sourcePosition = Right
+targetPosition = Left
+edge.type = default
+markerEnd = ArrowClosed
+```
+
+这样线条会从左侧矩形的右边接出，进入右侧矩形的左边，而不是从上下边或节点中心乱连。边的 `parent` / `decomposes_to` 类型保存在 edge data 中，不作为主图 label 展示，避免画面噪声。
+
 推荐可见标签：
 
 ```text
@@ -71,6 +82,8 @@ validation:  x = 2260
 ```
 
 每个 subtask 占一个纵向分组，每个 candidate 分支在该 subtask 分组内向下展开。normalized / scored / validation 节点优先跟随 parent 的 y 坐标，因此一条分支在视觉上形成横向链路。
+
+刷新页面后，前端会从 `localStorage` 恢复最新 graph snapshot；一次 pipeline 完成时，后端返回完整 graph snapshot，前端用 snapshot hydrate 全图，避免仅依赖增量事件造成 root 或 subtask 丢失。
 
 ## 后端结构
 
