@@ -1,10 +1,10 @@
 # 04 Candidate Generator
 
-## Purpose
+## 目的
 
-Generate diverse candidate thought states. The goal is not to sample the same answer repeatedly; the goal is to explore different reasoning strategies with low error correlation.
+生成多样化的候选 thought states。目标不是重复采样同一个答案，而是探索错误相关性较低的不同推理策略。
 
-## Inputs
+## 输入
 
 ```text
 user_query
@@ -15,9 +15,9 @@ num_branches
 strategy set
 ```
 
-## Outputs
+## 输出
 
-Generated `ThoughtState[]` with:
+生成的 `ThoughtState[]`，包含：
 
 ```text
 stage="candidate_generator"
@@ -27,7 +27,7 @@ metadata.generation_strategy
 metadata.branch_index
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def generate_candidates(user_query, context, rubric, subtask, num_branches):
@@ -62,7 +62,7 @@ def generate_candidates(user_query, context, rubric, subtask, num_branches):
     return candidates
 ```
 
-## Recommended strategies
+## 推荐生成策略
 
 ```text
 Direct expert answer
@@ -75,16 +75,16 @@ Risk reviewer answer
 Minimal MVP answer
 ```
 
-## Failure modes
+## 失败模式
 
-- Branches are stylistic variants rather than genuinely different strategies.
-- High-temperature branches hallucinate unsupported claims.
-- Candidate output is not parseable.
-- Generation ignores rubric or context.
+- 分支只是文风差异，不是真正策略差异。
+- 高温分支引入无依据幻觉。
+- candidate output 无法解析。
+- 生成过程忽略 rubric 或 context。
 
-## Acceptance criteria
+## 验收标准
 
-- Each candidate has parent lineage.
-- Each candidate records its generation strategy.
-- Branches cover complementary perspectives.
-- Raw drafts are preserved for trace replay.
+- 每个 candidate 都有 parent lineage。
+- 每个 candidate 都记录 generation strategy。
+- 分支覆盖互补视角。
+- raw drafts 被保留，支持 trace replay。
