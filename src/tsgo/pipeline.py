@@ -142,6 +142,9 @@ class PipelineController:
                     payload={"overall": state.score.overall, "score": asdict(state.score)},
                 )
 
+        if stage_name == "problem_decomposer":
+            self._emit_subtask_events(trace)
+
         trace.metadata.setdefault("stage_logs", {})[stage_name] = {
             "ok": result.ok,
             "logs": result.logs,
@@ -160,6 +163,34 @@ class PipelineController:
                 "metadata": result.metadata,
             },
         )
+
+    def _emit_subtask_events(self, trace: Trace) -> None:
+        root_id = next((state.id for state in trace.states if state.stage == "root"), None)
+        for subtask in trace.subtasks:
+            self._emit(
+                trace,
+                "subtask_created",
+                stage="problem_decomposer",
+                state_id=subtask.id,
+                payload={
+                    "subtask_id": subtask.id,
+                    "question": subtask.question,
+                    "metadata": {
+                        "required_outputs": subtask.required_outputs,
+                        "dependencies": subtask.dependencies,
+                        **subtask.metadata,
+                    },
+                },
+            )
+            if root_id:
+                self._emit(
+                    trace,
+                    "edge_created",
+                    stage="problem_decomposer",
+                    state_id=subtask.id,
+                    parent_ids=[root_id],
+                    payload={"source": root_id, "target": subtask.id, "edge_type": "decomposes_to"},
+                )
 
     def _emit_state_event(self, trace: Trace, event_type: str, state: ThoughtState) -> None:
         self._emit(
