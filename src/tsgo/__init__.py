@@ -2,9 +2,11 @@
 
 Pipeline v0.2 adds deterministic mock operators, a model-client boundary,
 prompter contracts, JSON parsing helpers, trace sinks, and a runnable demo.
+
+Use `python -m tsgo.demo` for the CLI demo. The demo module is intentionally
+not imported here so package import stays lightweight.
 """
 
-from .demo import build_v02_controller, run_demo
 from .mock_operators import build_mock_operators
 from .model_client import EchoModelClient, ModelClient
 from .operators import Operator, OperatorResult
@@ -66,6 +68,4 @@ __all__ = [
     "parse_json_list",
     "parse_json_object",
     "build_mock_operators",
-    "build_v02_controller",
-    "run_demo",
 ]
