@@ -20,6 +20,8 @@ class TraceEvent:
     timestamp: str
 ```
 
+注意：`state_id` 是内部关联键，不是主要用户可见信息。前端图节点应显示语义化 label。
+
 ## 事件类型
 
 当前 PipelineController 会发出：
@@ -27,6 +29,7 @@ class TraceEvent:
 ```text
 pipeline_started
 stage_started
+subtask_created
 state_created
 edge_created
 score_updated
@@ -42,6 +45,9 @@ run() 开始
   -> pipeline_started
 root 创建
   -> state_created
+ProblemDecomposer 产生 subtasks
+  -> subtask_created
+  -> edge_created(root -> subtask)
 每个 stage 开始
   -> stage_started
 operator 返回新状态
@@ -99,6 +105,7 @@ WebSocket 后端会发送两类消息：
   "trace_id": "trace_xxx",
   "node": {
     "id": "candidate_xxx",
+    "label": "candidate\ns1 · direct expert",
     "stage": "candidate_generator",
     "status": "draft"
   }
@@ -108,12 +115,29 @@ WebSocket 后端会发送两类消息：
 ## Graph reducer 映射
 
 ```text
-state_created -> graph_node_upsert
-edge_created  -> graph_edge_upsert
-score_updated -> graph_node_patch
+subtask_created -> graph_node_upsert(subtask s1/s2/s3/s4)
+state_created   -> graph_node_upsert(root/candidate/normalized/scored/aggregation/validation)
+edge_created    -> graph_edge_upsert
+score_updated   -> graph_node_patch
 ```
 
 运行结束后，前端也可以通过完整 trace snapshot 重建流程图。
+
+## 可视化标签规范
+
+用户可见标签应该是：
+
+```text
+root
+subtask s1
+candidate
+normalized
+scored
+aggregation
+validation
+```
+
+内部 ID 只能放在 metadata / debug details，不应该作为主标签展示。
 
 ## 安全边界
 
