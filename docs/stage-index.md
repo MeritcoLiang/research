@@ -1,8 +1,8 @@
-# Stage Index
+# 阶段索引
 
-Pipeline v0.1 has eleven stages. Each stage has a stable contract so it can later become a node type in the full thought-state graph engine.
+Pipeline v0.1 一共有 11 个阶段。每个阶段都有稳定契约，后续可以自然升级为完整 thought-state graph engine 中的一类节点。
 
-| Stage | Document | Main output |
+| 阶段 | 文档 | 主要输出 |
 | --- | --- | --- |
 | 00 | [Task Intake](stages/00_task_intake.md) | `TaskInfo` |
 | 01 | [Context Builder](stages/01_context_builder.md) | `ContextPacket` |
@@ -16,25 +16,25 @@ Pipeline v0.1 has eleven stages. Each stage has a stable contract so it can late
 | 09 | [Final Validator](stages/09_final_validator.md) | validated final `ThoughtState` |
 | 10 | [Trace Logger](stages/10_trace_logger.md) | persisted `Trace` |
 
-## Cross-stage invariants
+## 跨阶段不变量
 
-Every stage must preserve:
+每个阶段都必须保留：
 
 1. `user_query`
-2. state lineage through `id` and `parent_ids`
-3. hard user constraints
+2. 通过 `id` 和 `parent_ids` 表示的状态谱系
+3. 用户硬约束
 4. trace metadata
-5. enough structured fields for downstream scoring and aggregation
+5. 足够支持下游评分与聚合的结构化字段
 
-## Stage contract template
+## 阶段文档模板
 
-Each stage document follows this shape:
+每个阶段文档都遵循以下结构：
 
 ```text
-Purpose
-Inputs
-Outputs
-Pseudocode
-Failure modes
-Acceptance criteria
+目的
+输入
+输出
+伪代码
+失败模式
+验收标准
 ```
