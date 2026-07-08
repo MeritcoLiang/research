@@ -1,0 +1,19 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from tsgo.demo import run_demo
+
+
+def test_v02_mock_pipeline_runs_end_to_end(tmp_path: Path) -> None:
+    trace_path = tmp_path / "pipeline_traces.jsonl"
+    trace = run_demo("进入 Pipeline v0.2", trace_path=str(trace_path), num_branches=2)
+
+    assert trace.final_state_id is not None
+    assert trace_path.exists()
+    assert len(trace.states) > 0
+
+    final_state = next(state for state in trace.states if state.id == trace.final_state_id)
+    assert final_state.status == "validated"
+    assert final_state.draft is not None
+    assert "Pipeline v0.2" in final_state.draft
