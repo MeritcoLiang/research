@@ -17,6 +17,10 @@ build/
 venv/
 env/
 
+# Web frontend
+web/node_modules/
+web/dist/
+
 # Runtime traces
 traces/*.json
 traces/*.jsonl
