@@ -1,87 +1,87 @@
-# Implementation Roadmap
+# 实施路线图
 
-## v0.1: Design scaffold
+## v0.1：设计脚手架
 
-Status: landed.
+状态：已落地。
 
-Scope:
+范围：
 
 - README
-- architecture documentation
-- stage documentation
-- pseudocode for all stages
-- Python schema skeleton
-- operator interface skeleton
-- deterministic pipeline controller skeleton
-- example trace object
+- 架构文档
+- 阶段文档
+- 所有阶段的伪代码
+- Python schema 骨架
+- operator 接口骨架
+- 确定性 pipeline controller 骨架
+- 示例 trace 对象
 
-## v0.2: Concrete pipeline runner
+## v0.2：具体 pipeline runner
 
-Goal: run a complete mocked pipeline end-to-end.
+目标：跑通一个完整的 mock pipeline。
 
-Tasks:
+任务：
 
-1. Implement concrete no-LLM operators for deterministic tests.
-2. Add a model-client interface.
-3. Add structured JSON parser and repair utilities.
-4. Connect the existing prompter-style prompt methods to stage operators.
-5. Persist traces to local JSONL.
-6. Add unit tests for state lineage and stage contracts.
+1. 实现不依赖 LLM 的确定性 mock operators，用于测试。
+2. 增加 model-client 接口。
+3. 增加结构化 JSON parser 与 repair 工具。
+4. 将现有 prompter 风格的方法接入 stage operators。
+5. 将 trace 持久化为本地 JSONL。
+6. 为 state lineage 和 stage contracts 添加单元测试。
 
-Deliverable:
+交付物：
 
 ```text
 python -m tsgo.demo "user query"
 ```
 
-returns a replayable trace with generated, scored, improved, aggregated, and validated states.
+返回一个可回放 trace，其中包含 generated、scored、improved、aggregated 和 validated states。
 
-## v0.3: Real LLM integration
+## v0.3：真实 LLM 集成
 
-Goal: replace mock operators with LLM-backed operators.
+目标：用 LLM-backed operators 替换 mock operators。
 
-Tasks:
+任务：
 
-1. Implement `GenerateOperator` with strategy-conditioned branching.
-2. Implement `NormalizeOperator` with structured claim extraction.
-3. Implement `ScoreOperator` with rubric-aware scoring.
-4. Implement `ImproveOperator` with critique-guided revision.
-5. Implement `AggregateOperator` with claim-level merge.
-6. Implement `ValidateOperator` with release-gate checks.
+1. 实现支持策略条件分支的 `GenerateOperator`。
+2. 实现负责结构化 claim 抽取的 `NormalizeOperator`。
+3. 实现 rubric-aware 的 `ScoreOperator`。
+4. 实现基于 critique 修复的 `ImproveOperator`。
+5. 实现 claim-level merge 的 `AggregateOperator`。
+6. 实现发布门禁式 `ValidateOperator`。
 
-## v0.4: Tool-aware verifier
+## v0.4：工具感知 verifier
 
-Goal: use external tools when language-only validation is weak.
+目标：当纯语言验证不可靠时，引入外部工具。
 
-Tasks:
+任务：
 
-- code execution hooks
-- retrieval hooks
-- citation verification hooks
-- calculation hooks
-- policy/safety checker hooks
+- 代码执行 hooks
+- 检索 hooks
+- 引用验证 hooks
+- 计算 hooks
+- policy / safety checker hooks
 
-## v0.5: DAG controller
+## v0.5：DAG controller
 
-Goal: move from fixed linear pipeline to task-specific DAG execution.
+目标：从固定线性 pipeline 升级到按任务定制的 DAG 执行。
 
-Tasks:
+任务：
 
-- explicit state graph store
+- 显式 state graph store
 - edge metadata
-- dependency-aware scheduler
-- per-subtask branching
+- 依赖感知 scheduler
+- 按 subtask 分支
 - top-k pruning
 
-## v1.0: Thought-State Graph Orchestration Engine
+## v1.0：Thought-State Graph Orchestration Engine
 
-Goal: arbitrary graph search over thought states.
+目标：在 thought states 上进行任意图搜索。
 
-Capabilities:
+能力：
 
 - best-first search
 - beam search
 - MCTS-style expansion
-- learned or hybrid verifier
+- learned 或 hybrid verifier
 - adaptive test-time compute
 - trace-to-training-data export
