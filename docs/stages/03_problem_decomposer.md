@@ -1,10 +1,10 @@
 # 03 Problem Decomposer
 
-## Purpose
+## 目的
 
-Split the user request into smaller units that can be generated, scored, improved, and aggregated independently.
+将用户请求拆成更小的工作单元，使每个单元都可以独立生成、评分、改进和聚合。
 
-## Inputs
+## 输入
 
 ```text
 user_query
@@ -13,9 +13,9 @@ ContextPacket
 Rubric
 ```
 
-## Outputs
+## 输出
 
-`list[Subtask]`:
+`list[Subtask]`：
 
 ```text
 id
@@ -26,7 +26,7 @@ dependencies
 metadata
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def decompose_problem(user_query: str, context: ContextPacket, rubric: Rubric) -> list[Subtask]:
@@ -41,26 +41,26 @@ def decompose_problem(user_query: str, context: ContextPacket, rubric: Rubric) -
     return candidate_subtasks
 ```
 
-## Decomposition rules
+## 拆解规则
 
-A good subtask should be:
+一个好的 subtask 应该：
 
-- independently answerable;
-- easy to verify;
-- small enough to branch over;
-- connected to one or more final answer sections;
-- traceable to user intent.
+- 可以被独立回答；
+- 容易验证；
+- 足够小，适合分支搜索；
+- 能映射到最终答案的一个或多个部分；
+- 可以追溯到用户意图。
 
-## Failure modes
+## 失败模式
 
-- Over-decomposes a simple request.
-- Creates subtasks that cannot be independently verified.
-- Drops a critical user constraint.
-- Produces circular dependencies.
+- 对简单请求过度拆解。
+- 生成无法独立验证的 subtasks。
+- 丢失关键用户约束。
+- 产生循环依赖。
 
-## Acceptance criteria
+## 验收标准
 
-- Every subtask has a stable ID.
-- Required outputs are explicit.
-- Dependencies are explicit when needed.
-- The union of subtasks covers the original request.
+- 每个 subtask 有稳定 ID。
+- required outputs 明确。
+- 必要时 dependencies 明确。
+- 所有 subtasks 合起来覆盖原始请求。
