@@ -35,6 +35,7 @@ edge_created
 score_updated
 stage_completed
 pipeline_completed
+trace_persisted
 pipeline_error
 ```
 
@@ -58,6 +59,8 @@ operator 返回新状态
   -> stage_completed
 run() 完成
   -> pipeline_completed
+最终 trace 落盘
+  -> trace_persisted
 异常
   -> pipeline_error
 ```
