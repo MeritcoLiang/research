@@ -2,7 +2,7 @@
 
 ## v0.1：设计脚手架
 
-状态：已落地。
+状态：已完成。
 
 范围：
 
@@ -17,16 +17,19 @@
 
 ## v0.2：具体 pipeline runner
 
-目标：跑通一个完整的 mock pipeline。
+状态：已完成 mock runner。
 
-任务：
+目标：跑通一个完整的 deterministic mock pipeline。
 
-1. 实现不依赖 LLM 的确定性 mock operators，用于测试。
-2. 增加 model-client 接口。
-3. 增加结构化 JSON parser 与 repair 工具。
-4. 将现有 prompter 风格的方法接入 stage operators。
+已完成：
+
+1. 实现不依赖 LLM 的 deterministic mock operators。
+2. 增加 `ModelClient` 接口和 `EchoModelClient`。
+3. 增加结构化 JSON parser helper。
+4. 将 prompter 风格的方法接入 stage operator 边界。
 5. 将 trace 持久化为本地 JSONL。
-6. 为 state lineage 和 stage contracts 添加单元测试。
+6. 添加 mock pipeline 端到端单元测试。
+7. 增加 CLI demo。
 
 交付物：
 
@@ -34,7 +37,7 @@
 python -m tsgo.demo "user query"
 ```
 
-返回一个可回放 trace，其中包含 generated、scored、improved、aggregated 和 validated states。
+返回一个可回放 trace，其中包含 generated、scored、improved、aggregated 和 validated states，并将 trace 写入 JSONL。
 
 ## v0.3：真实 LLM 集成
 
@@ -42,12 +45,14 @@ python -m tsgo.demo "user query"
 
 任务：
 
-1. 实现支持策略条件分支的 `GenerateOperator`。
-2. 实现负责结构化 claim 抽取的 `NormalizeOperator`。
-3. 实现 rubric-aware 的 `ScoreOperator`。
-4. 实现基于 critique 修复的 `ImproveOperator`。
-5. 实现 claim-level merge 的 `AggregateOperator`。
-6. 实现发布门禁式 `ValidateOperator`。
+1. 实现真实 `GenerateOperator`，支持 strategy-conditioned branching。
+2. 实现真实 `NormalizeOperator`，负责结构化 claim 抽取。
+3. 实现真实 `ScoreOperator`，按 rubric 输出多维评分。
+4. 实现真实 `ImproveOperator`，基于 critique 做 targeted revision。
+5. 实现真实 `AggregateOperator`，按 claim-level merge 输出最终答案。
+6. 实现真实 `ValidateOperator`，作为发布门禁。
+7. 强化 JSON parser / repair，确保 LLM 输出稳定落入 schema。
+8. 增加 operator-level regression tests。
 
 ## v0.4：工具感知 verifier
 
