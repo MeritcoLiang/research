@@ -8,24 +8,27 @@ type Props = {
 export function StateInspector({ node }: Props) {
   return (
     <section className="panel inspector-panel">
-      <h2>状态详情</h2>
+      <h2>节点详情</h2>
       {!node ? (
         <p>点击流程图中的节点查看详情。</p>
       ) : (
         <dl>
-          <dt>state_id</dt>
-          <dd>{node.id}</dd>
-          <dt>stage</dt>
+          <dt>节点</dt>
+          <dd>{node.data.label}</dd>
+          <dt>阶段</dt>
           <dd>{node.data.stage}</dd>
-          <dt>status</dt>
+          <dt>状态</dt>
           <dd>{node.data.status ?? '-'}</dd>
-          <dt>score</dt>
+          <dt>评分</dt>
           <dd>{node.data.score ?? '-'}</dd>
-          <dt>summary</dt>
+          <dt>摘要</dt>
           <dd>{node.data.summary ?? '-'}</dd>
-          <dt>metadata</dt>
+          <dt>调试信息</dt>
           <dd>
-            <pre>{JSON.stringify(node.data.metadata ?? {}, null, 2)}</pre>
+            <details>
+              <summary>展开内部 metadata</summary>
+              <pre>{JSON.stringify(node.data.metadata ?? {}, null, 2)}</pre>
+            </details>
           </dd>
         </dl>
       )}
