@@ -1,20 +1,20 @@
 # 00 Task Intake
 
-## Purpose
+## 目的
 
-Classify the user request before spending heavy inference budget. This stage decides which downstream path should be used and how much test-time compute is justified.
+在投入大量 inference 预算之前，先对用户请求进行分类。该阶段决定后续应走哪类处理路径，以及应该分配多少 test-time compute。
 
-## Inputs
+## 输入
 
 ```text
 user_query
-conversation_context optional
-available_artifacts optional
+conversation_context 可选
+available_artifacts 可选
 ```
 
-## Outputs
+## 输出
 
-`TaskInfo`:
+`TaskInfo`：
 
 ```text
 task_type
@@ -27,7 +27,7 @@ answer_format
 metadata
 ```
 
-## Pseudocode
+## 伪代码
 
 ```python
 def task_intake(user_query: str) -> TaskInfo:
@@ -49,16 +49,16 @@ def task_intake(user_query: str) -> TaskInfo:
     )
 ```
 
-## Failure modes
+## 失败模式
 
-- Misclassifies a research task as pure reasoning.
-- Misses the need for citations or tools.
-- Underestimates difficulty and allocates too few branches.
-- Ignores explicit user constraints.
+- 把 research task 误判为纯 reasoning task。
+- 漏掉 citations 或 tools 的需求。
+- 低估难度，导致分支数量不足。
+- 忽略用户显式约束。
 
-## Acceptance criteria
+## 验收标准
 
-- The stage returns a structured `TaskInfo` object.
-- Hard requirements in the user query are preserved.
-- Downstream stages can choose branch count and verifier type from the result.
-- Ambiguity is captured as metadata rather than silently discarded.
+- 阶段返回结构化 `TaskInfo` 对象。
+- 用户请求中的硬要求被保留下来。
+- 下游阶段可以根据结果选择 branch count 和 verifier 类型。
+- 模糊性被记录到 metadata，而不是静默丢弃。
