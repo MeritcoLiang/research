@@ -65,6 +65,7 @@ This gives us the foundations for:
 │   ├── architecture.md
 │   ├── pipeline-v0.1.md
 │   ├── implementation-roadmap.md
+│   ├── prompter-interface.md
 │   ├── stage-index.md
 │   ├── pseudocode/
 │   │   ├── pipeline_v0_1.md
@@ -101,6 +102,7 @@ Start here:
 - [Architecture](docs/architecture.md)
 - [Pipeline v0.1](docs/pipeline-v0.1.md)
 - [Stage Index](docs/stage-index.md)
+- [Prompter interface mapping](docs/prompter-interface.md)
 - [Pipeline pseudocode](docs/pseudocode/pipeline_v0_1.md)
 - [Operator pseudocode](docs/pseudocode/operators.md)
 
@@ -124,6 +126,8 @@ The existing prompter abstraction maps cleanly into the pipeline:
 | `improve_prompt()` | 07 Improver | Critique-guided revision |
 | `aggregation_prompt(state_dicts)` | 08 Aggregator | Claim-level synthesis |
 | `validation_prompt()` | 09 Final Validator | Release gate |
+
+See [Prompter interface mapping](docs/prompter-interface.md) for the engineering contract.
 
 ## Development status
 
