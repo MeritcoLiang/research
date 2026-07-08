@@ -22,6 +22,45 @@ CLI demo -> terminal + trace file
 Web UI   -> browser + WebSocket events + trace file
 ```
 
+## 可视化原则
+
+流程图的用户可见标签必须语义化，不展示内部 `state_id`。`state_id` 只作为 React Flow 的内部 key 和调试 metadata 使用。
+
+用户应该看到：
+
+```text
+root
+  -> subtask s1/s2/s3/s4
+  -> candidates
+  -> normalized
+  -> scored
+  -> aggregation
+  -> validation
+```
+
+推荐可见标签：
+
+```text
+root
+subtask s1
+candidate
+s1 · direct expert
+normalized
+scored
+0.82
+aggregation
+validation
+```
+
+不推荐：
+
+```text
+candidate_8ac2...
+normalized_f91b...
+scored_42ab...
+validated_98d...
+```
+
 ## 后端结构
 
 ```text
@@ -119,11 +158,13 @@ error
 │ Header: session / trace / run status                     │
 ├────────────────────┬───────────────────────┬─────────────┤
 │ ChatPanel          │ FlowCanvas             │ Inspector   │
-│ 用户输入            │ 实时 ThoughtState 图     │ 节点详情      │
+│ 用户输入            │ 语义化流程图             │ 节点详情      │
 ├────────────────────┴───────────────────────┴─────────────┤
 │ EventTimeline                                             │
 └──────────────────────────────────────────────────────────┘
 ```
+
+`StateInspector` 默认展示节点标签、阶段、状态、评分、摘要；内部 ID 和 metadata 放入“调试信息”折叠区。
 
 ## 等价性测试
 
