@@ -30,7 +30,7 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
     const raw = message.node as Record<string, any>;
     const node: Node<GraphNodeData> = {
       id: String(raw.id),
-      position: layoutPosition(state.nodes.length),
+      position: semanticLayoutPosition(raw, state.nodes),
       data: {
         label: String(raw.label ?? raw.id),
         stage: String(raw.stage ?? ''),
@@ -100,8 +100,54 @@ function upsertEdge(edges: Edge[], next: Edge): Edge[] {
   return edges.map((edge) => (edge.id === next.id ? { ...edge, ...next } : edge));
 }
 
-function layoutPosition(index: number) {
-  const column = index % 4;
-  const row = Math.floor(index / 4);
-  return { x: column * 260, y: row * 140 };
+function semanticLayoutPosition(raw: Record<string, any>, nodes: Node<GraphNodeData>[]) {
+  const stage = String(raw.stage ?? '');
+  const status = String(raw.status ?? '');
+  const metadata = (raw.metadata ?? {}) as Record<string, any>;
+
+  if (stage === 'root') return { x: 520, y: 0 };
+  if (status === 'subtask' || stage === 'problem_decomposer') {
+    return { x: subtaskIndex(String(raw.id)) * 300, y: 150 };
+  }
+
+  if (stage === 'candidate_generator') {
+    const subtask = String(metadata.subtask_id ?? 's1');
+    const branch = Number(metadata.branch_index ?? 0);
+    return { x: subtaskIndex(subtask) * 300 + (branch % 2) * 130 - 65, y: 320 + Math.floor(branch / 2) * 90 };
+  }
+
+  if (stage === 'thought_normalizer') {
+    return alignWithParentOrStack(raw, nodes, 540);
+  }
+
+  if (stage === 'verifier_scorer') {
+    return alignWithParentOrStack(raw, nodes, 720);
+  }
+
+  if (stage === 'improver') {
+    return alignWithParentOrStack(raw, nodes, 900);
+  }
+
+  if (stage === 'aggregator') {
+    return { x: 520, y: 1080 };
+  }
+
+  if (stage === 'final_validator') {
+    return { x: 520, y: 1240 };
+  }
+
+  return { x: 260 * (nodes.length % 4), y: 140 * Math.floor(nodes.length / 4) };
+}
+
+function alignWithParentOrStack(raw: Record<string, any>, nodes: Node<GraphNodeData>[], y: number) {
+  const parentIds = Array.isArray(raw.metadata?.parent_ids) ? raw.metadata.parent_ids : [];
+  const parent = nodes.find((node) => parentIds.includes(node.id));
+  if (parent) return { x: parent.position.x, y };
+  return { x: 260 * (nodes.length % 4), y };
+}
+
+function subtaskIndex(id: string) {
+  const match = id.match(/s(\d+)/);
+  if (!match) return 0;
+  return Number(match[1]) - 1;
 }
