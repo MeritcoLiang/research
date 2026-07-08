@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .events import EventSink, NoopEventSink, TraceEvent
 from .operators import NotImplementedOperator, Operator, OperatorResult
 from .schema import ThoughtState, Trace, new_state_id
+from .trace_store import JsonlTraceSink
 
 
 PIPELINE_STAGE_ORDER = [
@@ -82,6 +84,8 @@ class PipelineController:
 
         active_states = [root]
         for stage_name in PIPELINE_STAGE_ORDER:
+            if stage_name == "trace_logger":
+                continue
             operator = self.operators[stage_name]
             self._emit(
                 trace,
@@ -117,6 +121,7 @@ class PipelineController:
             "pipeline_completed",
             payload={"final_state_id": trace.final_state_id, "state_count": len(trace.states)},
         )
+        self._persist_final_trace(trace)
         return trace
 
     def _record_result(self, trace: Trace, stage_name: str, result: OperatorResult) -> None:
@@ -163,6 +168,43 @@ class PipelineController:
                 "metadata": result.metadata,
             },
         )
+
+    def _persist_final_trace(self, trace: Trace) -> None:
+        if not self.config.enable_trace_logging:
+            return
+        self._emit(
+            trace,
+            "stage_started",
+            stage="trace_logger",
+            payload={"active_state_ids": [trace.final_state_id] if trace.final_state_id else []},
+        )
+        trace_path = Path(str(self.config.metadata.get("trace_path", "traces/pipeline_traces.jsonl")))
+        trace.metadata["trace_path"] = str(trace_path)
+        trace.metadata.setdefault("stage_logs", {})["trace_logger"] = {
+            "ok": True,
+            "logs": [f"trace 已写入：{trace_path}"],
+            "errors": [],
+            "metadata": {"trace_path": str(trace_path), "deferred_until_pipeline_completed": True},
+        }
+        self._emit(
+            trace,
+            "stage_completed",
+            stage="trace_logger",
+            payload={
+                "ok": True,
+                "new_state_ids": [],
+                "logs": [f"trace 已写入：{trace_path}"],
+                "errors": [],
+                "metadata": {"trace_path": str(trace_path), "deferred_until_pipeline_completed": True},
+            },
+        )
+        self._emit(
+            trace,
+            "trace_persisted",
+            stage="trace_logger",
+            payload={"trace_path": str(trace_path)},
+        )
+        JsonlTraceSink(trace_path).write(trace)
 
     def _emit_subtask_events(self, trace: Trace) -> None:
         root_id = next((state.id for state in trace.states if state.stage == "root"), None)
