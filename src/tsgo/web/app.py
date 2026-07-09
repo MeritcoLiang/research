@@ -1,10 +1,4 @@
-"""FastAPI backend for the Pipeline v0.2 Web UI.
-
-The Web UI is an adapter over the shared runtime. Sending a message through the
-WebSocket or HTTP endpoint is equivalent to running:
-
-    python tests/demo_pipeline_v02.py "进入 Pipeline v0.2"
-"""
+"""FastAPI backend for the Thought-State Graph Orchestration Web UI."""
 
 from __future__ import annotations
 
@@ -22,7 +16,7 @@ from .schemas import CreateSessionResponse, GraphResponse, TraceSummaryResponse,
 from .sessions import SessionManager
 
 
-app = FastAPI(title="Thought-State Graph Orchestration UI", version="0.2.0")
+app = FastAPI(title="Thought-State Graph Orchestration UI", version="0.3.0")
 manager = SessionManager()
 
 
@@ -39,9 +33,14 @@ def post_message(session_id: str, request: UserMessageRequest) -> TraceSummaryRe
             session_id=session_id,
             message=request.message,
             num_branches=request.num_branches,
+            llm_provider=request.llm_provider,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return _trace_summary(session_id, trace)
 
 
@@ -76,7 +75,8 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
                 await websocket.send_json({"type": "error", "message": "message 不能为空。"})
                 continue
 
-            num_branches = int(message.get("num_branches", 4))
+            num_branches = int(message.get("num_branches", 6))
+            llm_provider = str(message.get("llm_provider", "stage_flow"))
             queue: asyncio.Queue = asyncio.Queue()
             sink = AsyncQueueEventSink(queue=queue, loop=asyncio.get_running_loop())
 
@@ -86,6 +86,7 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
                     session_id=session_id,
                     message=content,
                     num_branches=num_branches,
+                    llm_provider=llm_provider,
                     event_sink=sink,
                 )
             )
@@ -100,7 +101,12 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
                 await websocket.send_json({"type": "trace_event", "event": event.to_dict()})
                 await websocket.send_json(event_to_graph_delta(event))
 
-            trace = task.result()
+            try:
+                trace = task.result()
+            except Exception as exc:
+                await websocket.send_json({"type": "error", "message": str(exc)})
+                continue
+
             graph = trace_to_graph(trace).to_dict()
             await websocket.send_json(
                 {
