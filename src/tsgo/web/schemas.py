@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 try:
     from pydantic import BaseModel, Field
 except ImportError as exc:  # pragma: no cover - only hit when web extras are missing
     raise RuntimeError("Web UI requires optional dependency: pip install -e '.[web]'") from exc
+
+
+LLMProviderName = Literal["stage_flow", "azure_openai", "deepseek"]
 
 
 class CreateSessionResponse(BaseModel):
@@ -16,7 +19,8 @@ class CreateSessionResponse(BaseModel):
 
 class UserMessageRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    num_branches: int = Field(default=4, ge=1, le=16)
+    num_branches: int = Field(default=6, ge=1, le=16)
+    llm_provider: LLMProviderName = "stage_flow"
 
 
 class TraceSummaryResponse(BaseModel):
