@@ -19,13 +19,14 @@ export const initialGraphState: GraphState = {
 
 const X = {
   root: 0,
-  subtask: 280,
-  candidate: 600,
-  normalized: 940,
-  scored: 1280,
-  improved: 1620,
-  aggregation: 1960,
-  validation: 2260,
+  expert: 260,
+  subtask: 540,
+  candidate: 880,
+  normalized: 1220,
+  scored: 1560,
+  improved: 1900,
+  aggregation: 2240,
+  validation: 2540,
 };
 
 const ROOT_Y = 620;
@@ -156,6 +157,10 @@ function semanticLayoutPosition(raw: Record<string, unknown>, nodes: Node<GraphN
   const metadata = isRecord(raw.metadata) ? raw.metadata : {};
 
   if (stage === 'root') return { x: X.root, y: ROOT_Y };
+
+  if (stage === 'expert_router') {
+    return { x: X.expert, y: ROOT_Y };
+  }
 
   if (status === 'subtask' || stage === 'problem_decomposer') {
     const idx = subtaskIndex(String(raw.id));
