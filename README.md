@@ -1,12 +1,12 @@
 # Thought-State Graph Orchestration Engine
 
-本仓库是 **Thought-State Graph Orchestration Engine（思维状态图编排引擎）** 的工程落地区。当前主线已经修正为：**ThoughtGraph 是核心产物；LLM、Agents SDK、structured output、tools、provider client 都只是执行后端**。
+本仓库是 **Thought-State Graph Orchestration Engine（思维状态图编排引擎）** 的工程落地区。当前主线已经修正为：**ThoughtGraph 是核心产物；LLM、Agents SDK、structured output、tools、provider client 都只是 Operator 的实现细节**。
 
 项目的核心判断是：高质量 AI 回答不应该来自一次简单的 prompt-response 调用。每一个中间 thought 都应该被结构化、评分、改进、验证、聚合、记录，并进入可查询的 thought-state graph。
 
 ## 当前目标：Graph-first v0.3
 
-v0.3 不只是 LLM-backed operator scaffold。现在已经补上核心图层：
+v0.3 不只是 LLM Operator scaffold。现在已经补上核心图层：
 
 ```text
 Trace -> ThoughtGraph -> GraphRunResult
@@ -31,19 +31,13 @@ ThoughtGraph
     tool
 ```
 
-LLM-backed operators 仍然保留，但它们的定位已经收敛为：
-
-```text
-operator execution backend
-```
-
-不是系统主线。
+LLM Operators 仍然保留，但它们只是 Operator 的一种实现方式，不是系统主线。
 
 ## 工程原则
 
 第一条：
 
-> 每个阶段都消费结构化状态，并返回结构化状态。
+> 每个 Operator 都消费结构化状态，并返回结构化状态。
 
 第二条：
 
@@ -55,7 +49,11 @@ operator execution backend
 
 第四条：
 
-> Agents SDK 未来只作为 operator backend；GraphController 才是 orchestration engine。
+> Operator 是唯一的执行语义。LLM、Agents SDK、tools、rules 都只是 Operator 的实现方式。
+
+第五条：
+
+> Agents SDK 未来只用于实现某些 Operator；GraphController 才是 orchestration engine。
 
 ## 快速运行
 
@@ -106,7 +104,7 @@ tsgo.runtime.run_pipeline_message(message)
 tsgo.runtime.run_pipeline_graph(message)
 ```
 
-v0.3 LLM-backed runtime：
+v0.3 LLM runtime：
 
 ```python
 tsgo.runtime.run_llm_pipeline_message(
@@ -140,7 +138,7 @@ Web UI message
 tests/demo_pipeline_v03.py
   -> tsgo.runtime.run_llm_pipeline_message
   -> PipelineController
-  -> LLM-backed operators
+  -> LLM Operators
   -> ModelClient / JSON contracts
   -> Trace / TraceEvents
   -> ThoughtGraph 可选
@@ -256,12 +254,13 @@ tests/demo_pipeline_v03.py
 2. `Subtask`：问题拆解得到的子任务，也是 graph node。
 3. `ThoughtEdge`：thought graph 的有向边。
 4. `ThoughtGraph`：系统主产物，包含 states、subtasks、edges、root、final state。
-5. `GraphRunResult`：一次运行的 `Trace + ThoughtGraph`。
-6. `PipelineController`：当前线性执行策略，后续会被 GraphController 替代或包裹。
-7. `Trace`：记录全部状态、评分、改进和验证结果的可回放轨迹。
-8. `TraceEvent`：Web UI 和测试用于实时观察 pipeline 的事件。
-9. `GraphSnapshot`：将 Trace 映射为前端可渲染的 nodes / edges。
-10. `ModelClient`：v0.3 LLM-backed operators 的临时模型接口。
+5. `Operator`：唯一的执行语义；负责把输入状态转换成输出状态。
+6. `GraphRunResult`：一次运行的 `Trace + ThoughtGraph`。
+7. `PipelineController`：当前线性执行策略，后续会被 GraphController 替代或包裹。
+8. `Trace`：记录全部状态、评分、改进和验证结果的可回放轨迹。
+9. `TraceEvent`：Web UI 和测试用于实时观察 pipeline 的事件。
+10. `GraphSnapshot`：将 Trace 映射为前端可渲染的 nodes / edges。
+11. `ModelClient`：v0.3 LLM Operators 内部使用的临时辅助接口，不是 graph engine 主抽象。
 
 ## Prompter 接口映射
 
@@ -275,7 +274,7 @@ tests/demo_pipeline_v03.py
 | `aggregation_prompt(state_dicts)` | 08 Aggregator | claim 级综合 |
 | `validation_prompt()` | 09 Final Validator | 发布门禁 |
 
-Prompter 继续保留为兼容层，但主线是 `ThoughtGraph`。
+Prompter 继续保留为兼容层，但主线是 `ThoughtGraph -> GraphController -> Operator`。
 
 ## 开发状态
 
@@ -291,7 +290,7 @@ Prompter 继续保留为兼容层，但主线是 `ThoughtGraph`。
 - `tests/demo_pipeline_v02.py` demo adapter
 - `tests/demo_pipeline_v03.py` scripted LLM demo adapter
 - `json_contracts.py` 结构化 JSON parser
-- `llm_operators.py` LLM-backed operators
+- `llm_operators.py` LLM Operators
 - `ThoughtGraph` / `ThoughtEdge` / `ThoughtStateGraphEngine`
 - `run_pipeline_graph()` / `run_llm_pipeline_graph()`
 - `tests/test_thought_graph.py`
@@ -303,7 +302,7 @@ Prompter 继续保留为兼容层，但主线是 `ThoughtGraph`。
 - frontier selection
 - graph search policy
 - Web UI final lineage / full graph 切换
-- Agents SDK structured backend
+- 使用 Agents SDK 实现部分 Operator
 - OpenAI / Azure OpenAI / DeepSeek 最小模型接入
 - 最小 verifier tools
 
@@ -321,4 +320,4 @@ GraphController
   -> Web UI final lineage / full graph toggle
 ```
 
-Agents SDK 和模型接入在 v0.5+ 作为 operator backend 引入，不再喧宾夺主。
+Agents SDK 和模型接入在 v0.5+ 只作为 Operator 的实现方式引入，不再喧宾夺主。
