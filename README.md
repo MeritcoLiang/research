@@ -181,6 +181,7 @@ tests/demo_pipeline_v03.py
 │   ├── pipeline-v0.1.md
 │   ├── pipeline-v0.2.md
 │   ├── pipeline-v0.3.md
+│   ├── stage-instructions-secondary-market-analyst.md
 │   ├── thought-state-graph-engine.md
 │   ├── web-ui.md
 │   ├── implementation-roadmap.md
@@ -238,6 +239,7 @@ tests/demo_pipeline_v03.py
 - [Pipeline v0.1](docs/pipeline-v0.1.md)
 - [Pipeline v0.2](docs/pipeline-v0.2.md)
 - [Pipeline v0.3](docs/pipeline-v0.3.md)
+- [SecondaryMarketAnalyst Stage Instructions](docs/stage-instructions-secondary-market-analyst.md)
 - [Web UI 设计](docs/web-ui.md)
 - [事件流设计](docs/event-stream.md)
 - [JSON 契约](docs/json-contracts.md)
@@ -294,6 +296,7 @@ Prompter 继续保留为兼容层，但主线是 `ThoughtGraph -> GraphControlle
 - `ThoughtGraph` / `ThoughtEdge` / `ThoughtStateGraphEngine`
 - `run_pipeline_graph()` / `run_llm_pipeline_graph()`
 - `tests/test_thought_graph.py`
+- SecondaryMarketAnalyst 专家化 Stage instructions
 - diversity-aware aggregation
 
 尚未完成：
