@@ -1,25 +1,27 @@
 # Web UI 设计
 
-Web UI 的目标是让用户在浏览器里输入 message，同时实时看到 Pipeline v0.2 的调用流程图。
+Web UI 的目标是让用户在浏览器里输入 message，同时实时看到 Thought-State Graph Orchestration Engine 的 Stage 调用流程图。
+
+当前 Web UI 默认运行 **SecondaryMarketAnalyst Stage flow**。
 
 关键要求：
 
 ```text
 Web UI 输入 message
-  == python tests/demo_pipeline_v02.py "进入 Pipeline v0.2"
+  == python tests/demo_secondary_market_stage_flow.py "请用二级市场分析师视角分析 AAPL 的中期机会和风险。"
 ```
 
 两者都调用同一个函数：
 
 ```python
-tsgo.runtime.run_pipeline_message(message)
+tsgo.runtime.run_secondary_market_stage_flow(message)
 ```
 
 区别只在输出介质：
 
 ```text
 CLI demo -> terminal + trace file
-Web UI   -> browser + WebSocket events + trace file
+Web UI   -> browser + WebSocket events + trace file + GraphSnapshot
 ```
 
 ## 可视化原则
@@ -29,7 +31,7 @@ Web UI   -> browser + WebSocket events + trace file
 主流程采用**从左到右**的层级展开，因为完整分支较多，横向布局比自上而下更舒展：
 
 ```text
-root -> subtask s1/s2/s3/s4 -> candidates -> normalized -> scored -> aggregation -> validation
+root -> expert SecondaryMarketAnalyst -> subtask s1/s2/... -> candidates -> normalized -> scored -> aggregation -> validation
 ```
 
 边线使用 React Flow 默认 Bezier edge，并显式设置：
@@ -41,15 +43,16 @@ edge.type = default
 markerEnd = ArrowClosed
 ```
 
-这样线条会从左侧矩形的右边接出，进入右侧矩形的左边，而不是从上下边或节点中心乱连。边的 `parent` / `decomposes_to` 类型保存在 edge data 中，不作为主图 label 展示，避免画面噪声。
+这样线条会从左侧矩形的右边接出，进入右侧矩形的左边，而不是从上下边或节点中心乱连。边的 `handoff` / `decomposes_to` / `parent` 类型保存在 edge data 中，不作为主图 label 展示，避免画面噪声。
 
 推荐可见标签：
 
 ```text
 root
+expert SecondaryMarketAnalyst
 subtask s1
 candidate
-s1 · direct expert
+s1 · bull case
 normalized
 scored
 0.82
@@ -72,25 +75,27 @@ validated_98d...
 
 ```text
 root:        x = 0
-subtask:     x = 280
-candidate:   x = 600
-normalized:  x = 940
-scored:      x = 1280
-improved:    x = 1620
-aggregation: x = 1960
-validation:  x = 2260
+expert:      x = 260
+subtask:     x = 540
+candidate:   x = 880
+normalized:  x = 1220
+scored:      x = 1560
+improved:    x = 1900
+aggregation: x = 2240
+validation:  x = 2540
 ```
 
 每个 subtask 占一个纵向分组，每个 candidate 分支在该 subtask 分组内向下展开。normalized / scored / validation 节点优先跟随 parent 的 y 坐标，因此一条分支在视觉上形成横向链路。
 
-刷新页面后，前端会从 `localStorage` 恢复最新 graph snapshot；一次 pipeline 完成时，后端返回完整 graph snapshot，前端用 snapshot hydrate 全图，避免仅依赖增量事件造成 root 或 subtask 丢失。
+刷新页面后，前端会从 `localStorage` 恢复最新 graph snapshot；一次 pipeline 完成时，后端返回完整 graph snapshot，前端用 snapshot hydrate 全图，避免仅依赖增量事件造成 root、expert 或 subtask 丢失。
 
 ## 后端结构
 
 ```text
-src/tsgo/runtime.py          # 唯一 pipeline runtime 入口
+src/tsgo/runtime.py          # 唯一 runtime 入口
 src/tsgo/events.py           # TraceEvent / EventSink
 src/tsgo/graph.py            # Trace -> GraphSnapshot
+src/tsgo/experts/            # 专家化 Operators
 src/tsgo/web/app.py          # FastAPI app
 src/tsgo/web/sessions.py     # session manager / Web message adapter
 src/tsgo/web/event_bus.py    # AsyncQueueEventSink
@@ -159,8 +164,8 @@ WS   /ws/sessions/{session_id}
 ```json
 {
   "type": "user_message",
-  "content": "进入 Pipeline v0.2",
-  "num_branches": 4
+  "content": "请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
+  "num_branches": 6
 }
 ```
 
@@ -195,7 +200,7 @@ error
 `tests/test_web_message_equivalence.py` 会验证：
 
 ```text
-run_pipeline_message(message)
+run_secondary_market_stage_flow(message)
 ```
 
 和：
@@ -206,4 +211,4 @@ SessionManager.handle_user_message(message)
 
 产生同样的标准化 trace shape。
 
-不比较 UUID / timestamp，因为它们天然随机；比较 stage counts、status counts、final status、final draft marker 和 events 是否存在。
+不比较 UUID / timestamp，因为它们天然随机；比较 stage counts、status counts、final status、expert handoff、final draft marker 和 events 是否存在。
