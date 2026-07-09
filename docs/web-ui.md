@@ -89,6 +89,19 @@ validation:  x = 2540
 
 刷新页面后，前端会从 `localStorage` 恢复最新 graph snapshot；一次 pipeline 完成时，后端返回完整 graph snapshot，前端用 snapshot hydrate 全图，避免仅依赖增量事件造成 root、expert 或 subtask 丢失。
 
+## 页面高度与滚动
+
+页面不再展示 EventTimeline。事件仍然保留在前端 state 中，用于运行状态、调试和未来 Inspector 扩展，但不占用主页面空间。
+
+FlowCanvas 的高度跟随流程图内容动态计算：
+
+```text
+canvas_height = max(720, max_node_y + 280)
+canvas_width  = max(1280, max_node_x + 420)
+```
+
+纵向空间由浏览器页面滚动条承载，避免在流程图内部再出现局部纵向滚动；横向展开较长时，FlowCanvas 区域保留横向滚动条。
+
 ## 后端结构
 
 ```text
@@ -118,8 +131,7 @@ web/
     └── components/
         ├── ChatPanel.tsx
         ├── FlowCanvas.tsx
-        ├── StateInspector.tsx
-        └── EventTimeline.tsx
+        └── StateInspector.tsx
 ```
 
 ## 运行方式
@@ -188,12 +200,10 @@ error
 ├────────────────────┬───────────────────────┬─────────────┤
 │ ChatPanel          │ FlowCanvas             │ Inspector   │
 │ 用户输入            │ 左到右语义流程图          │ 节点详情      │
-├────────────────────┴───────────────────────┴─────────────┤
-│ EventTimeline                                             │
-└──────────────────────────────────────────────────────────┘
+└────────────────────┴───────────────────────┴─────────────┘
 ```
 
-`StateInspector` 默认展示节点标签、阶段、状态、评分、摘要；内部 ID 和 metadata 放入“调试信息”折叠区。
+`StateInspector` 默认展示节点标签、阶段、状态、评分、摘要；内部 ID 和 metadata 放入“调试信息”折叠区。页面高度跟随 FlowCanvas，主浏览器滚动条满足流程图纵向展开需求。
 
 ## 等价性测试
 
