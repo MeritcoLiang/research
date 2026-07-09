@@ -28,6 +28,7 @@ export type GraphSnapshot = {
 export type ServerMessage =
   | { type: "client_reset" }
   | { type: "client_graph_snapshot"; graph: GraphSnapshot }
+  | { type: "run_started"; llm_provider: string; num_branches: number }
   | { type: "trace_event"; event: TraceEvent }
   | { type: "graph_node_upsert"; trace_id: string; node: Record<string, unknown> }
   | { type: "graph_edge_upsert"; trace_id: string; edge: Record<string, unknown> }
