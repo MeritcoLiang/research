@@ -43,6 +43,13 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
     return hydrateGraphSnapshot(state, message.graph, 'snapshot_loaded');
   }
 
+  if (message.type === 'run_started') {
+    return {
+      ...state,
+      runStatus: `run_started:${message.llm_provider}`,
+    };
+  }
+
   if (message.type === 'trace_event') {
     return {
       ...state,
