@@ -1,11 +1,13 @@
-"""Shared runtime entrypoints for CLI demos, tests, and Web UI.
+"""Shared runtime entrypoints for CLI demos, tests, Web UI, and graph engine.
 
-v0.2 remains the deterministic Web UI path. v0.3 adds LLM-backed operators
-behind the same PipelineController / Trace / EventSink contracts.
+v0.2 remains the deterministic Web UI path. v0.3 adds LLM-backed operators.
+Both paths can be lifted into a canonical ThoughtGraph through the graph-first
+runtime helpers in this module.
 """
 
 from __future__ import annotations
 
+from .engine import GraphRunResult, run_controller_as_graph
 from .events import EventSink
 from .llm_operators import build_llm_operators
 from .mock_operators import build_mock_operators
@@ -86,6 +88,25 @@ def run_pipeline_message(
     return controller.run(message)
 
 
+def run_pipeline_graph(
+    message: str = DEFAULT_QUERY,
+    *,
+    trace_path: str = "traces/pipeline_traces.jsonl",
+    num_branches: int = 4,
+    event_sink: EventSink | None = None,
+    session_id: str | None = None,
+) -> GraphRunResult:
+    """Run v0.2 and return the canonical ThoughtGraph result."""
+
+    controller = build_v02_controller(
+        trace_path=trace_path,
+        num_branches=num_branches,
+        event_sink=event_sink,
+        session_id=session_id,
+    )
+    return run_controller_as_graph(controller, message)
+
+
 def run_llm_pipeline_message(
     message: str = DEFAULT_V03_QUERY,
     *,
@@ -107,3 +128,26 @@ def run_llm_pipeline_message(
         session_id=session_id,
     )
     return controller.run(message)
+
+
+def run_llm_pipeline_graph(
+    message: str = DEFAULT_V03_QUERY,
+    *,
+    model_client: ModelClient,
+    prompter: Prompter | None = None,
+    trace_path: str = "traces/pipeline_v03_traces.jsonl",
+    num_branches: int = 4,
+    event_sink: EventSink | None = None,
+    session_id: str | None = None,
+) -> GraphRunResult:
+    """Run v0.3 and return the canonical ThoughtGraph result."""
+
+    controller = build_v03_controller(
+        model_client=model_client,
+        prompter=prompter,
+        trace_path=trace_path,
+        num_branches=num_branches,
+        event_sink=event_sink,
+        session_id=session_id,
+    )
+    return run_controller_as_graph(controller, message)
