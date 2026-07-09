@@ -1,8 +1,9 @@
 """Session management and Web-message runtime adapter.
 
-The Web UI currently runs the SecondaryMarketAnalyst stage flow so every user
-message produces the documented sequence:
-ExpertRouter -> 10 business stages -> ThoughtGraph / TraceEvent / GraphSnapshot.
+The Web UI can run the deterministic SecondaryMarketAnalyst Stage flow or route
+the same message to a real LLM Operator implementation. LLM selection does not
+create a new execution semantic; it only chooses how LLM Operators are
+implemented for this run.
 """
 
 from __future__ import annotations
@@ -11,9 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from ..azure_openai_client import AzureOpenAIResponsesModelClient
+from ..deepseek_client import DeepSeekOpenAIChatModelClient
 from ..events import EventSink
 from ..graph import trace_to_graph
-from ..runtime import run_secondary_market_stage_flow
+from ..model_client import ModelClient
+from ..runtime import run_llm_pipeline_message, run_secondary_market_stage_flow
 from ..schema import Trace
 
 
@@ -45,19 +49,35 @@ class SessionManager:
         session_id: str,
         message: str,
         num_branches: int = 6,
+        llm_provider: str = "stage_flow",
         event_sink: EventSink | None = None,
     ) -> Trace:
-        """Run a Web UI message through the documented Stage flow."""
+        """Run a Web UI message through the selected Operator implementation."""
 
         session = self.get_session(session_id)
-        trace_path = self.trace_dir / f"{session_id}.jsonl"
-        trace = run_secondary_market_stage_flow(
-            message,
-            trace_path=str(trace_path),
-            num_branches=num_branches,
-            event_sink=event_sink,
-            session_id=session_id,
-        )
+        provider = _normalize_llm_provider(llm_provider)
+        trace_path = self.trace_dir / f"{session_id}_{provider}.jsonl"
+
+        if provider == "stage_flow":
+            trace = run_secondary_market_stage_flow(
+                message,
+                trace_path=str(trace_path),
+                num_branches=num_branches,
+                event_sink=event_sink,
+                session_id=session_id,
+            )
+        else:
+            client = _model_client_for_provider(provider)
+            trace = run_llm_pipeline_message(
+                message,
+                model_client=client,
+                trace_path=str(trace_path),
+                num_branches=num_branches,
+                event_sink=event_sink,
+                session_id=session_id,
+            )
+
+        trace.metadata["web_llm_provider"] = provider
         session.traces[trace.id] = trace
         return trace
 
@@ -65,3 +85,28 @@ class SessionManager:
         session = self.get_session(session_id)
         trace = session.traces[trace_id]
         return trace_to_graph(trace).to_dict()
+
+
+def _normalize_llm_provider(provider: str) -> str:
+    normalized = str(provider or "stage_flow").strip().lower()
+    aliases = {
+        "none": "stage_flow",
+        "deterministic": "stage_flow",
+        "secondary_market": "stage_flow",
+        "secondary_market_stage_flow": "stage_flow",
+        "azure": "azure_openai",
+        "azure-openai": "azure_openai",
+        "azure_openai": "azure_openai",
+        "deepseek": "deepseek",
+    }
+    if normalized not in aliases:
+        raise ValueError(f"不支持的 llm_provider：{provider}")
+    return aliases[normalized]
+
+
+def _model_client_for_provider(provider: str) -> ModelClient:
+    if provider == "azure_openai":
+        return AzureOpenAIResponsesModelClient.from_env()
+    if provider == "deepseek":
+        return DeepSeekOpenAIChatModelClient.from_env()
+    raise ValueError(f"provider 不需要 ModelClient 或不受支持：{provider}")
