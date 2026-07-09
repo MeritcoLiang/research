@@ -22,7 +22,17 @@ web = [
 ]
 azure = [
   "openai>=1.0.0",
-  "azure-identity>=1.16.0"
+  "azure-identity>=1.16.0",
+  "python-dotenv>=1.0.0"
+]
+deepseek = [
+  "openai>=1.0.0",
+  "python-dotenv>=1.0.0"
+]
+llm = [
+  "openai>=1.0.0",
+  "azure-identity>=1.16.0",
+  "python-dotenv>=1.0.0"
 ]
 
 [tool.setuptools.package-dir]
