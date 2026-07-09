@@ -1,6 +1,6 @@
 [project]
 name = "thought-state-graph-orchestration"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pipeline-first foundation for a Thought-State Graph Orchestration Engine."
 readme = "README.md"
 requires-python = ">=3.11"
