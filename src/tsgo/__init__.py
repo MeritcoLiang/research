@@ -6,7 +6,9 @@ transform graph nodes.
 """
 
 from .azure_openai_client import AzureOpenAIResponsesModelClient
+from .deepseek_client import DeepSeekOpenAIChatModelClient
 from .engine import GraphRunResult, ThoughtStateGraphEngine, run_controller_as_graph
+from .env import load_env_file
 from .events import EventSink, InMemoryEventSink, NoopEventSink, TraceEvent
 from .experts import build_secondary_market_operators
 from .graph import GraphEdge, GraphNode, GraphSnapshot, event_to_graph_delta, trace_to_graph
@@ -97,6 +99,8 @@ __all__ = [
     "ScriptedModelClient",
     "CallbackModelClient",
     "AzureOpenAIResponsesModelClient",
+    "DeepSeekOpenAIChatModelClient",
+    "load_env_file",
     "TraceSink",
     "JsonlTraceSink",
     "JsonTraceSink",
