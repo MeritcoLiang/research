@@ -4,8 +4,15 @@
   background: #f6f7fb;
 }
 
+html {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: auto;
 }
 
 main {
@@ -18,9 +25,9 @@ header {
 
 .layout {
   display: grid;
-  grid-template-columns: 320px minmax(480px, 1fr) 360px;
+  grid-template-columns: 320px minmax(720px, 1fr) 360px;
   gap: 12px;
-  min-height: 620px;
+  align-items: start;
 }
 
 .panel {
@@ -45,14 +52,31 @@ header {
   cursor: pointer;
 }
 
-.flow-panel {
-  min-height: 620px;
+.chat-panel,
+.inspector-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 }
 
-.flow-panel > div {
-  height: 560px;
+.flow-panel {
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.flow-canvas-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 16px;
+}
+
+.flow-canvas {
   border: 1px solid #eef1f7;
   border-radius: 10px;
+  background: #fcfdff;
 }
 
 .inspector-panel pre,
@@ -63,18 +87,6 @@ header {
   padding: 8px;
   border-radius: 8px;
   max-height: 320px;
-  overflow: auto;
-}
-
-.timeline-panel {
-  margin-top: 12px;
-}
-
-.timeline-panel ol {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 4px 12px;
-  max-height: 220px;
   overflow: auto;
 }
 
