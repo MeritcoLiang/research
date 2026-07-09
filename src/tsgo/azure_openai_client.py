@@ -11,6 +11,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from .env import load_env_file
+
 
 DEFAULT_AZURE_OPENAI_SCOPE = "https://ai.azure.com/.default"
 DEFAULT_AZURE_OPENAI_BASE_PATH = "/openai/v1/"
@@ -42,6 +44,7 @@ class AzureOpenAIResponsesModelClient:
 
     @classmethod
     def from_env(cls) -> "AzureOpenAIResponsesModelClient":
+        load_env_file()
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").strip()
         deployment = (
             os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
