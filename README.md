@@ -12,6 +12,8 @@
 SecondaryMarketAnalyst Stage flow 已可运行
 Web UI 会实时反馈并更新流程图
 Pipeline v0.3 已支持真实 Azure OpenAI 调用（az login）
+Pipeline v0.3 已支持真实 DeepSeek 调用（OpenAI-compatible API）
+.env.example 已设计完成，.env 保持本地私密
 ```
 
 主流程：
@@ -53,6 +55,37 @@ ThoughtGraph
 3. v0.3+ 的主产物是 `ThoughtGraph`，不是 prompt、provider、agent 或 API response。
 4. Operator 是唯一的执行语义。LLM、Agents SDK、tools、rules 都只是 Operator 的实现方式。
 5. Agents SDK 未来只用于实现某些 Operator；GraphController 才是 orchestration engine。
+6. `.env` 只在本地保存真实密钥；仓库只提交 `.env.example`。
+
+## 环境变量
+
+复制模板：
+
+```bash
+cp .env.example .env
+```
+
+`.env` 中包含：
+
+```text
+AZURE_OPENAI_ENDPOINT
+AZURE_OPENAI_DEPLOYMENT
+AZURE_OPENAI_TEMPERATURE
+AZURE_OPENAI_MAX_OUTPUT_TOKENS
+AZURE_OPENAI_TIMEOUT
+AZURE_OPENAI_TOKEN_SCOPE
+
+DEEPSEEK_API_KEY
+DEEPSEEK_BASE_URL
+DEEPSEEK_MODEL
+DEEPSEEK_TEMPERATURE
+DEEPSEEK_MAX_TOKENS
+DEEPSEEK_TIMEOUT
+DEEPSEEK_REASONING_EFFORT
+DEEPSEEK_THINKING
+```
+
+`.env` 和 `.env.*` 默认被 git 忽略，`.env.example` 会被追踪。
 
 ## 快速运行
 
@@ -82,9 +115,18 @@ Azure OpenAI 真实模型调用，使用 `az login`：
 ```bash
 az login
 pip install -e '.[azure]'
-export AZURE_OPENAI_ENDPOINT="https://<resource-name>.openai.azure.com"
-export AZURE_OPENAI_DEPLOYMENT="<deployment-name>"
+cp .env.example .env
+# 填写 AZURE_OPENAI_ENDPOINT 和 AZURE_OPENAI_DEPLOYMENT
 python tests/demo_pipeline_v03_azure.py "进入 Pipeline v0.3" --num-branches 1
+```
+
+DeepSeek 真实模型调用：
+
+```bash
+pip install -e '.[deepseek]'
+cp .env.example .env
+# 填写 DEEPSEEK_API_KEY
+python tests/demo_pipeline_v03_deepseek.py "进入 Pipeline v0.3" --num-branches 1
 ```
 
 Graph-first runtime：
@@ -148,11 +190,17 @@ from tsgo.azure_openai_client import AzureOpenAIResponsesModelClient
 from tsgo.runtime import run_llm_pipeline_message
 
 client = AzureOpenAIResponsesModelClient.from_env()
-trace = run_llm_pipeline_message(
-    "进入 Pipeline v0.3",
-    model_client=client,
-    num_branches=1,
-)
+trace = run_llm_pipeline_message("进入 Pipeline v0.3", model_client=client, num_branches=1)
+```
+
+DeepSeek client：
+
+```python
+from tsgo.deepseek_client import DeepSeekOpenAIChatModelClient
+from tsgo.runtime import run_llm_pipeline_message
+
+client = DeepSeekOpenAIChatModelClient.from_env()
+trace = run_llm_pipeline_message("进入 Pipeline v0.3", model_client=client, num_branches=1)
 ```
 
 ## 调用链
@@ -182,39 +230,46 @@ tests/demo_pipeline_v03_azure.py
   -> Azure OpenAI Responses API
   -> Trace / TraceEvents
   -> ThoughtGraph 可选
+
+tests/demo_pipeline_v03_deepseek.py
+  -> DeepSeekOpenAIChatModelClient.from_env
+  -> tsgo.runtime.run_llm_pipeline_message
+  -> PipelineController
+  -> LLM Operators
+  -> DeepSeek OpenAI-compatible Chat Completions API
+  -> Trace / TraceEvents
+  -> ThoughtGraph 可选
 ```
 
 ## 仓库结构
 
 ```text
 .
+├── .env.example
 ├── README.md
 ├── pyproject.toml
 ├── src/
 │   └── tsgo/
 │       ├── __init__.py
 │       ├── azure_openai_client.py
+│       ├── deepseek_client.py
+│       ├── env.py
 │       ├── engine.py
 │       ├── events.py
 │       ├── experts/
-│       │   ├── __init__.py
-│       │   └── secondary_market.py
 │       ├── graph.py
 │       ├── json_contracts.py
 │       ├── llm_operators.py
-│       ├── mock_operators.py
 │       ├── model_client.py
 │       ├── operators.py
-│       ├── parsing.py
 │       ├── pipeline.py
-│       ├── prompter.py
 │       ├── runtime.py
 │       ├── schema.py
 │       ├── thought_graph.py
-│       ├── trace_store.py
 │       └── web/
 ├── docs/
 │   ├── azure-openai-az-login.md
+│   ├── deepseek-openai-compatible.md
 │   ├── event-stream.md
 │   ├── json-contracts.md
 │   ├── pipeline-v0.3.md
@@ -223,22 +278,13 @@ tests/demo_pipeline_v03_azure.py
 │   ├── thought-state-graph-engine.md
 │   └── web-ui.md
 ├── tests/
-│   ├── demo_pipeline_v02.py
-│   ├── demo_pipeline_v03.py
 │   ├── demo_pipeline_v03_azure.py
+│   ├── demo_pipeline_v03_deepseek.py
 │   ├── demo_secondary_market_stage_flow.py
 │   ├── test_azure_openai_client.py
-│   ├── test_secondary_market_stage_flow.py
-│   └── test_thought_graph.py
+│   ├── test_deepseek_client.py
+│   └── test_secondary_market_stage_flow.py
 └── web/
-    └── src/
-        ├── App.tsx
-        ├── style.css
-        ├── graph/eventReducer.ts
-        └── components/
-            ├── ChatPanel.tsx
-            ├── FlowCanvas.tsx
-            └── StateInspector.tsx
 ```
 
 ## 文档入口
@@ -247,6 +293,7 @@ tests/demo_pipeline_v03_azure.py
 
 - [Thought-State Graph Engine 主线](docs/thought-state-graph-engine.md)
 - [Azure OpenAI with az login](docs/azure-openai-az-login.md)
+- [DeepSeek OpenAI-compatible API](docs/deepseek-openai-compatible.md)
 - [Pipeline v0.3](docs/pipeline-v0.3.md)
 - [SecondaryMarketAnalyst Stage Instructions](docs/stage-instructions-secondary-market-analyst.md)
 - [SecondaryMarketAnalyst Stage Prompts](docs/stage-prompts-secondary-market-analyst.md)
@@ -278,9 +325,13 @@ tests/demo_pipeline_v03_azure.py
 - Web UI 实时流程图
 - `Trace -> GraphSnapshot`
 - `Trace -> ThoughtGraph`
+- `.env.example` 与可选 dotenv 加载
 - `AzureOpenAIResponsesModelClient`，支持 `az login`
+- `DeepSeekOpenAIChatModelClient`，支持 OpenAI-compatible API
 - `tests/demo_pipeline_v03_azure.py`
+- `tests/demo_pipeline_v03_deepseek.py`
 - `tests/test_azure_openai_client.py`
+- `tests/test_deepseek_client.py`
 - diversity-aware aggregation
 
 尚未完成：
@@ -290,7 +341,7 @@ tests/demo_pipeline_v03_azure.py
 - graph search policy
 - Web UI final lineage / full graph 切换
 - 使用 Agents SDK 实现部分 Operator
-- DeepSeek / Azure OpenAI structured-only Operator 收敛
+- Azure OpenAI / DeepSeek structured-only Operator 收敛
 - 最小 verifier tools
 
 ## 下一阶段
