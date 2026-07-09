@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from .engine import GraphRunResult, run_controller_as_graph
 from .events import EventSink
-from .experts import build_secondary_market_operators
+from .experts import build_secondary_market_llm_operators, build_secondary_market_operators
 from .llm_operators import build_llm_operators
 from .mock_operators import build_mock_operators
 from .model_client import ModelClient
@@ -67,6 +67,35 @@ def build_secondary_market_controller(
     )
     return PipelineController(
         operators=build_secondary_market_operators(),
+        config=config,
+        event_sink=event_sink,
+        session_id=session_id,
+    )
+
+
+def build_secondary_market_llm_controller(
+    *,
+    model_client: ModelClient,
+    prompter: Prompter | None = None,
+    trace_path: str = "traces/secondary_market_llm_stage_flow.jsonl",
+    num_branches: int = 1,
+    event_sink: EventSink | None = None,
+    session_id: str | None = None,
+) -> PipelineController:
+    """Create SecondaryMarketAnalyst Stage flow with LLM Operators."""
+
+    config = PipelineConfig(
+        default_num_branches=num_branches,
+        max_improvement_rounds=1,
+        top_k_for_aggregation=12,
+        metadata={
+            "trace_path": trace_path,
+            "runner": "secondary_market_llm_stage_flow",
+            "expert_profile": "SecondaryMarketAnalyst",
+        },
+    )
+    return PipelineController(
+        operators=build_secondary_market_llm_operators(model_client=model_client, prompter=prompter),
         config=config,
         event_sink=event_sink,
         session_id=session_id,
@@ -136,6 +165,29 @@ def run_secondary_market_stage_flow(
     return controller.run(message)
 
 
+def run_secondary_market_llm_stage_flow(
+    message: str = DEFAULT_SECONDARY_MARKET_QUERY,
+    *,
+    model_client: ModelClient,
+    prompter: Prompter | None = None,
+    trace_path: str = "traces/secondary_market_llm_stage_flow.jsonl",
+    num_branches: int = 1,
+    event_sink: EventSink | None = None,
+    session_id: str | None = None,
+) -> Trace:
+    """Run SecondaryMarketAnalyst Stage flow with LLM Operators."""
+
+    controller = build_secondary_market_llm_controller(
+        model_client=model_client,
+        prompter=prompter,
+        trace_path=trace_path,
+        num_branches=num_branches,
+        event_sink=event_sink,
+        session_id=session_id,
+    )
+    return controller.run(message)
+
+
 def run_pipeline_graph(
     message: str = DEFAULT_QUERY,
     *,
@@ -166,6 +218,29 @@ def run_secondary_market_graph(
     """Run SecondaryMarketAnalyst stage flow and return ThoughtGraph."""
 
     controller = build_secondary_market_controller(
+        trace_path=trace_path,
+        num_branches=num_branches,
+        event_sink=event_sink,
+        session_id=session_id,
+    )
+    return run_controller_as_graph(controller, message)
+
+
+def run_secondary_market_llm_graph(
+    message: str = DEFAULT_SECONDARY_MARKET_QUERY,
+    *,
+    model_client: ModelClient,
+    prompter: Prompter | None = None,
+    trace_path: str = "traces/secondary_market_llm_stage_flow.jsonl",
+    num_branches: int = 1,
+    event_sink: EventSink | None = None,
+    session_id: str | None = None,
+) -> GraphRunResult:
+    """Run SecondaryMarketAnalyst LLM stage flow and return ThoughtGraph."""
+
+    controller = build_secondary_market_llm_controller(
+        model_client=model_client,
+        prompter=prompter,
         trace_path=trace_path,
         num_branches=num_branches,
         event_sink=event_sink,
