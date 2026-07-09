@@ -1,6 +1,6 @@
 # 事件流设计
 
-Pipeline v0.2 增加 `TraceEvent`，用于让 CLI、测试和 Web UI 观察同一条 runtime 执行路径。
+Pipeline v0.2+ 增加 `TraceEvent`，用于让 CLI、测试和 Web UI 观察同一条 runtime 执行路径。
 
 事件流展示的是系统显式状态，不展示模型隐藏 chain-of-thought。
 
@@ -29,6 +29,7 @@ class TraceEvent:
 ```text
 pipeline_started
 stage_started
+expert_handoff
 subtask_created
 state_created
 edge_created
@@ -46,9 +47,12 @@ run() 开始
   -> pipeline_started
 root 创建
   -> state_created
+ExpertRouter / TaskIntake 选择专家
+  -> expert_handoff
+  -> edge_created(root -> expert)
 ProblemDecomposer 产生 subtasks
   -> subtask_created
-  -> edge_created(root -> subtask)
+  -> edge_created(expert -> subtask) 或 edge_created(root -> subtask)
 每个 stage 开始
   -> stage_started
 operator 返回新状态
@@ -108,7 +112,7 @@ WebSocket 后端会发送两类消息：
   "trace_id": "trace_xxx",
   "node": {
     "id": "candidate_xxx",
-    "label": "candidate\ns1 · direct expert",
+    "label": "candidate\ns1 · bull case",
     "stage": "candidate_generator",
     "status": "draft"
   }
@@ -118,6 +122,7 @@ WebSocket 后端会发送两类消息：
 ## Graph reducer 映射
 
 ```text
+expert_handoff -> graph_node_upsert(expert SecondaryMarketAnalyst)
 subtask_created -> graph_node_upsert(subtask s1/s2/s3/s4)
 state_created   -> graph_node_upsert(root/candidate/normalized/scored/aggregation/validation)
 edge_created    -> graph_edge_upsert
@@ -132,6 +137,7 @@ score_updated   -> graph_node_patch
 
 ```text
 root
+expert SecondaryMarketAnalyst
 subtask s1
 candidate
 normalized
@@ -147,6 +153,8 @@ validation
 允许展示：
 
 - `ThoughtState`
+- `Subtask`
+- `ExpertProfile`
 - `claims`
 - `assumptions`
 - `score`
