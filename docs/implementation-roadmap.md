@@ -17,7 +17,7 @@
 
 ## v0.2：具体 pipeline runner + Web UI adapter
 
-状态：已完成 mock runner、事件流、Web UI 骨架。
+状态：已完成。
 
 目标：跑通一个完整的 deterministic mock pipeline，并让测试 demo 与 Web UI 输入 message 共享同一个 runtime。
 
@@ -54,22 +54,28 @@ cd web && npm run dev
 tsgo.runtime.run_pipeline_message(message)
 ```
 
-## v0.3：真实 LLM 集成
+## v0.3：LLM-backed operators
 
-目标：用 LLM-backed operators 替换 mock operators。
+状态：已完成 scaffold。
 
-任务：
+目标：用 LLM-backed operators 替换 mock operators 的内部实现，同时保持 `ThoughtState / OperatorResult / Trace / TraceEvent / GraphSnapshot` 契约不变。
 
-1. 实现真实 `GenerateOperator`，支持 strategy-conditioned branching。
-2. 实现真实 `NormalizeOperator`，负责结构化 claim 抽取。
-3. 实现真实 `ScoreOperator`，按 rubric 输出多维评分。
-4. 实现真实 `ImproveOperator`，基于 critique 做 targeted revision。
-5. 实现真实 `AggregateOperator`，按 claim-level merge 输出最终答案。
-6. 实现真实 `ValidateOperator`，作为发布门禁。
-7. 强化 JSON parser / repair，确保 LLM 输出稳定落入 schema。
-8. 增加 trace-based evals。
-9. 增加 operator-level regression tests。
-10. 在 Web UI 中显示真实 operator latency、token usage 和 tool outputs。
+已完成：
+
+1. 增加 `json_contracts.py`，用于解析 LLM JSON 输出。
+2. 增加 `llm_operators.py`，包含 LLM-backed Generate / Normalize / Score / Improve / Aggregate / Validate。
+3. 增加 `ScriptedModelClient` 和 `CallbackModelClient`，用于无 API key 的回归测试。
+4. 增加 `build_v03_controller()` 和 `run_llm_pipeline_message()`。
+5. 增加 `tests/demo_pipeline_v03.py`。
+6. 增加 `tests/test_llm_pipeline.py`。
+7. Aggregator 改为 diversity-aware top-k，避免只聚合第一个 subtask。
+8. README 与 `docs/pipeline-v0.3.md` 已更新。
+
+交付物：
+
+```text
+python tests/demo_pipeline_v03.py "进入 Pipeline v0.3" --num-branches 1
+```
 
 ## v0.4：工具感知 verifier
 
@@ -82,6 +88,7 @@ tsgo.runtime.run_pipeline_message(message)
 - 引用验证 hooks
 - 计算 hooks
 - policy / safety checker hooks
+- Web UI 中展示 tool call / tool output / verifier result
 
 ## v0.5：DAG controller
 
