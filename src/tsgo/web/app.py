@@ -77,6 +77,14 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
 
             num_branches = int(message.get("num_branches", 6))
             llm_provider = str(message.get("llm_provider", "stage_flow"))
+            await websocket.send_json(
+                {
+                    "type": "run_started",
+                    "llm_provider": llm_provider,
+                    "num_branches": num_branches,
+                }
+            )
+
             queue: asyncio.Queue = asyncio.Queue()
             sink = AsyncQueueEventSink(queue=queue, loop=asyncio.get_running_loop())
 
