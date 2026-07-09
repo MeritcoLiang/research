@@ -1,8 +1,17 @@
 # JSON 契约
 
-Pipeline v0.2 引入轻量 JSON parser，并为未来 LLM-backed operators 预留结构化输出契约。
+Pipeline v0.3 已经将 JSON 契约从“文档约定”升级为代码中的 parser 层：
 
-v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt templates 已经明确要求模型返回 JSON。v0.3 接入真实模型时，应优先让每个 operator 返回以下结构。
+```text
+src/tsgo/parsing.py         # 负责 JSON 提取与基础解析
+src/tsgo/json_contracts.py  # 负责 operator-level schema coercion
+```
+
+v0.3 的 LLM-backed operators 必须走以下路径：
+
+```text
+raw model output -> parse_json_object -> parse_*_packet -> ThoughtState / Score / validation metadata
+```
 
 ## GenerateOperator
 
@@ -16,6 +25,12 @@ v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt template
     }
   ]
 }
+```
+
+Parser：
+
+```python
+parse_generate_packet(raw_text) -> list[str]
 ```
 
 ## NormalizeOperator
@@ -36,6 +51,12 @@ v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt template
   "missing_info": [],
   "risks": []
 }
+```
+
+Parser：
+
+```python
+parse_normalize_packet(raw_text) -> dict
 ```
 
 ## ScoreOperator
@@ -62,6 +83,19 @@ v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt template
 }
 ```
 
+Parser：
+
+```python
+parse_score_packets(raw_text, weights=...) -> list[dict]
+```
+
+Score parser 支持两种匹配方式：
+
+```text
+优先按 state_id 匹配；
+没有 state_id 时按返回顺序 fallback。
+```
+
 ## ImproveOperator
 
 ```json
@@ -75,6 +109,12 @@ v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt template
 }
 ```
 
+Parser：
+
+```python
+parse_improve_packet(raw_text) -> dict
+```
+
 ## AggregateOperator
 
 ```json
@@ -83,8 +123,14 @@ v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt template
   "selected_claims": [],
   "conflicts": [],
   "resolutions": [],
-  "aggregation_policy": "claim_level_weighted_merge"
+  "aggregation_policy": "diversity_aware_claim_level_merge"
 }
+```
+
+Parser：
+
+```python
+parse_aggregate_packet(raw_text) -> dict
 ```
 
 ## ValidateOperator
@@ -99,13 +145,28 @@ v0.2 的 deterministic mock operators 不依赖 LLM 输出，但 prompt template
 }
 ```
 
+Parser：
+
+```python
+parse_validation_packet(raw_text) -> dict
+```
+
 ## Parser 原则
 
-`src/tsgo/parsing.py` 当前只做轻量处理：
+`src/tsgo/parsing.py`：
 
 - 支持直接 JSON；
 - 支持 Markdown code fence 中的 JSON；
 - 支持从文本中提取最外层 object / array；
-- 不做复杂自动修复。
+- 遇到不可解析内容时抛 `JsonParseError`。
 
-复杂 JSON repair 放到 v0.3 处理。
+`src/tsgo/json_contracts.py`：
+
+- 将 score clamp 到 0..1；
+- 将未知 `claim_type` fallback 到 `unknown`；
+- 将 string / list 兼容为 `list[str]`；
+- 将 claims coercion 成 `Claim` dataclass；
+- 将 validation coercion 成发布门禁 metadata；
+- 不做重型自动修复。
+
+复杂 JSON repair、重试、模型自修复放到后续 v0.4+。
