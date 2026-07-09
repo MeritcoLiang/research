@@ -7,7 +7,7 @@ type Props = {
 };
 
 export function ChatPanel({ disabled, onSend, finalPreview }: Props) {
-  const [message, setMessage] = useState('进入 Pipeline v0.2');
+  const [message, setMessage] = useState('请用二级市场分析师视角分析 AAPL 的中期机会和风险。');
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -22,7 +22,7 @@ export function ChatPanel({ disabled, onSend, finalPreview }: Props) {
       <form onSubmit={submit}>
         <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={6} />
         <button disabled={disabled} type="submit">
-          运行 Pipeline
+          运行 Stage Flow
         </button>
       </form>
       <h3>最终答案预览</h3>
