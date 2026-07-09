@@ -1,9 +1,10 @@
 """Thought-State Graph Orchestration Engine package.
 
-Pipeline v0.3 adds LLM-backed operators and structured JSON contracts while
-preserving the v0.2 runtime, event stream, graph, and trace interfaces.
+The core artifact is a ThoughtGraph. Pipelines, LLM operators, Agents SDK,
+tools, and providers are execution details that create or transform graph nodes.
 """
 
+from .engine import GraphRunResult, ThoughtStateGraphEngine, run_controller_as_graph
 from .events import EventSink, InMemoryEventSink, NoopEventSink, TraceEvent
 from .graph import GraphEdge, GraphNode, GraphSnapshot, event_to_graph_delta, trace_to_graph
 from .json_contracts import (
@@ -26,7 +27,9 @@ from .runtime import (
     DEFAULT_V03_QUERY,
     build_v02_controller,
     build_v03_controller,
+    run_llm_pipeline_graph,
     run_llm_pipeline_message,
+    run_pipeline_graph,
     run_pipeline_message,
 )
 from .schema import (
@@ -48,6 +51,7 @@ from .schema import (
     Trace,
     new_state_id,
 )
+from .thought_graph import ThoughtEdge, ThoughtEdgeType, ThoughtGraph, trace_to_thought_graph
 from .trace_store import JsonTraceSink, JsonlTraceSink, TraceSink
 
 __all__ = [
@@ -68,6 +72,13 @@ __all__ = [
     "ToolOutput",
     "Trace",
     "new_state_id",
+    "ThoughtEdge",
+    "ThoughtEdgeType",
+    "ThoughtGraph",
+    "trace_to_thought_graph",
+    "GraphRunResult",
+    "ThoughtStateGraphEngine",
+    "run_controller_as_graph",
     "Operator",
     "OperatorResult",
     "PipelineConfig",
@@ -98,7 +109,9 @@ __all__ = [
     "build_v02_controller",
     "build_v03_controller",
     "run_pipeline_message",
+    "run_pipeline_graph",
     "run_llm_pipeline_message",
+    "run_llm_pipeline_graph",
     "TraceEvent",
     "EventSink",
     "NoopEventSink",
