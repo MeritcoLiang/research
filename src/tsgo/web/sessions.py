@@ -1,9 +1,8 @@
 """Session management and Web-message runtime adapter.
 
-The Web UI can run the deterministic SecondaryMarketAnalyst Stage flow or route
-the same message to a real LLM Operator implementation. LLM selection does not
-create a new execution semantic; it only chooses how LLM Operators are
-implemented for this run.
+The Web UI can run the deterministic SecondaryMarketAnalyst Stage flow or run
+the same Stage flow with real LLM Operators. LLM selection does not create a new
+execution semantic; it only chooses how Operators are implemented for this run.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from ..deepseek_client import DeepSeekOpenAIChatModelClient
 from ..events import EventSink
 from ..graph import trace_to_graph
 from ..model_client import ModelClient
-from ..runtime import run_llm_pipeline_message, run_secondary_market_stage_flow
+from ..runtime import run_secondary_market_llm_stage_flow, run_secondary_market_stage_flow
 from ..schema import Trace
 
 
@@ -68,7 +67,7 @@ class SessionManager:
             )
         else:
             client = _model_client_for_provider(provider)
-            trace = run_llm_pipeline_message(
+            trace = run_secondary_market_llm_stage_flow(
                 message,
                 model_client=client,
                 trace_path=str(trace_path),
