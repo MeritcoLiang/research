@@ -1,27 +1,13 @@
 # Web UI 设计
 
-Web UI 的目标是让用户在浏览器里输入 message，同时实时看到 Thought-State Graph Orchestration Engine 的 Stage 调用流程图。
+Web UI 的目标是让用户在浏览器里输入 message、选择 LLM / Operator 实现，并实时看到 Thought-State Graph Orchestration Engine 的 Stage 调用流程图。
 
-当前 Web UI 默认运行 **SecondaryMarketAnalyst Stage flow**。
-
-关键要求：
+当前 Web UI 支持三种任务发送模式：
 
 ```text
-Web UI 输入 message
-  == python tests/demo_secondary_market_stage_flow.py "请用二级市场分析师视角分析 AAPL 的中期机会和风险。"
-```
-
-两者都调用同一个函数：
-
-```python
-tsgo.runtime.run_secondary_market_stage_flow(message)
-```
-
-区别只在输出介质：
-
-```text
-CLI demo -> terminal + trace file
-Web UI   -> browser + WebSocket events + trace file + GraphSnapshot
+stage_flow     # SecondaryMarketAnalyst deterministic Stage flow，不调用真实 LLM
+azure_openai   # 使用 Azure OpenAI + az login 实现 LLM Operators
+deepseek       # 使用 DeepSeek OpenAI-compatible API 实现 LLM Operators
 ```
 
 ## 可视化原则
@@ -45,29 +31,36 @@ markerEnd = ArrowClosed
 
 这样线条会从左侧矩形的右边接出，进入右侧矩形的左边，而不是从上下边或节点中心乱连。边的 `handoff` / `decomposes_to` / `parent` 类型保存在 edge data 中，不作为主图 label 展示，避免画面噪声。
 
-推荐可见标签：
+## LLM 选择与发送任务
+
+`ChatPanel` 提供 LLM / Operator 实现选择框：
 
 ```text
-root
-expert SecondaryMarketAnalyst
-subtask s1
-candidate
-s1 · bull case
-normalized
-scored
-0.82
-aggregation
-validation
+Stage Flow（无真实 LLM） -> llm_provider = stage_flow
+Azure OpenAI（az login） -> llm_provider = azure_openai
+DeepSeek                 -> llm_provider = deepseek
 ```
 
-不推荐：
+前端通过 WebSocket 发送：
+
+```json
+{
+  "type": "user_message",
+  "content": "请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
+  "num_branches": 6,
+  "llm_provider": "deepseek"
+}
+```
+
+后端 `SessionManager.handle_user_message()` 根据 `llm_provider` 选择运行方式：
 
 ```text
-candidate_8ac2...
-normalized_f91b...
-scored_42ab...
-validated_98d...
+stage_flow   -> run_secondary_market_stage_flow()
+azure_openai -> AzureOpenAIResponsesModelClient.from_env() + run_llm_pipeline_message()
+deepseek     -> DeepSeekOpenAIChatModelClient.from_env() + run_llm_pipeline_message()
 ```
+
+注意：LLM 选择只是选择 Operator 的实现方式，不引入新的执行语义层。
 
 ## 布局规则
 
@@ -105,10 +98,12 @@ canvas_width  = max(1280, max_node_x + 420)
 ## 后端结构
 
 ```text
-src/tsgo/runtime.py          # 唯一 runtime 入口
+src/tsgo/runtime.py          # runtime 入口
 src/tsgo/events.py           # TraceEvent / EventSink
 src/tsgo/graph.py            # Trace -> GraphSnapshot
 src/tsgo/experts/            # 专家化 Operators
+src/tsgo/azure_openai_client.py
+src/tsgo/deepseek_client.py
 src/tsgo/web/app.py          # FastAPI app
 src/tsgo/web/sessions.py     # session manager / Web message adapter
 src/tsgo/web/event_bus.py    # AsyncQueueEventSink
@@ -139,7 +134,7 @@ web/
 后端：
 
 ```bash
-pip install -e '.[web]'
+pip install -e '.[web,llm]'
 uvicorn tsgo.web.app:app --reload
 ```
 
@@ -169,17 +164,17 @@ GET  /api/sessions/{session_id}/traces/{trace_id}/graph
 WS   /ws/sessions/{session_id}
 ```
 
-## WebSocket 消息
-
-用户发送：
+HTTP message body：
 
 ```json
 {
-  "type": "user_message",
-  "content": "请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
-  "num_branches": 6
+  "message": "请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
+  "num_branches": 6,
+  "llm_provider": "stage_flow"
 }
 ```
+
+## WebSocket 消息
 
 服务端推送：
 
@@ -199,7 +194,7 @@ error
 │ Header: session / trace / run status                     │
 ├────────────────────┬───────────────────────┬─────────────┤
 │ ChatPanel          │ FlowCanvas             │ Inspector   │
-│ 用户输入            │ 左到右语义流程图          │ 节点详情      │
+│ 输入 + LLM选择      │ 左到右语义流程图          │ 节点详情      │
 └────────────────────┴───────────────────────┴─────────────┘
 ```
 
@@ -216,9 +211,7 @@ run_secondary_market_stage_flow(message)
 和：
 
 ```text
-SessionManager.handle_user_message(message)
+SessionManager.handle_user_message(message, llm_provider="stage_flow")
 ```
 
 产生同样的标准化 trace shape。
-
-不比较 UUID / timestamp，因为它们天然随机；比较 stage counts、status counts、final status、expert handoff、final draft marker 和 events 是否存在。
