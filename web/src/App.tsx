@@ -81,7 +81,7 @@ export default function App() {
 
     const socket = new WebSocket(wsUrl(`/ws/sessions/${sessionId}`));
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: 'user_message', content: message, num_branches: 4 }));
+      socket.send(JSON.stringify({ type: 'user_message', content: message, num_branches: 6 }));
     };
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data) as ServerMessage;
