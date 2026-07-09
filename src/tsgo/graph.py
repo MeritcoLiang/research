@@ -1,8 +1,8 @@
 """Trace-to-graph adapters for the Web UI.
 
 The graph model keeps internal IDs for edges, but user-visible labels are
-semantic and compact: root -> subtask -> candidate -> normalized -> scored ->
-aggregation -> validation.
+semantic and compact: root -> expert -> subtask -> candidate -> normalized ->
+scored -> aggregation -> validation.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def state_to_node(state: ThoughtState) -> GraphNode:
     )
 
 
-def subtask_to_node(subtask: Subtask) -> GraphNode:
+def subtask_to_node(subtask: Subtask, *, parent_id: str | None = None) -> GraphNode:
     """Convert one Subtask into a visible graph node."""
 
     return GraphNode(
@@ -86,10 +86,23 @@ def subtask_to_node(subtask: Subtask) -> GraphNode:
         summary=subtask.question,
         metadata={
             "internal_id": subtask.id,
+            "parent_ids": [parent_id] if parent_id else [],
             "required_outputs": subtask.required_outputs,
             "dependencies": subtask.dependencies,
             **subtask.metadata,
         },
+    )
+
+
+def expert_to_node(handoff: dict[str, Any]) -> GraphNode:
+    expert_id = str(handoff.get("selected_expert", "expert"))
+    return GraphNode(
+        id=expert_id,
+        label=f"expert\n{expert_id}",
+        stage="expert_router",
+        status="selected",
+        summary=str(handoff.get("handoff_reason", "expert selected")),
+        metadata={"internal_id": expert_id, "handoff": handoff},
     )
 
 
@@ -102,12 +115,24 @@ def trace_to_graph(trace: Trace) -> GraphSnapshot:
     seen_edges: set[str] = set()
 
     root_id = next((state.id for state in trace.states if state.stage == "root"), None)
+    handoff = trace.metadata.get("expert_handoff") if isinstance(trace.metadata.get("expert_handoff"), dict) else None
+    expert_id: str | None = None
+    if handoff:
+        expert_node = expert_to_node(handoff)
+        expert_id = expert_node.id
+        if expert_node.id not in existing_node_ids:
+            nodes.append(expert_node)
+            existing_node_ids.add(expert_node.id)
+        if root_id:
+            _append_edge(edges, seen_edges, root_id, expert_node.id, "handoff")
+
+    subtask_parent = expert_id or root_id
     for subtask in trace.subtasks:
         if subtask.id not in existing_node_ids:
-            nodes.append(subtask_to_node(subtask))
+            nodes.append(subtask_to_node(subtask, parent_id=subtask_parent))
             existing_node_ids.add(subtask.id)
-        if root_id:
-            _append_edge(edges, seen_edges, root_id, subtask.id, "decomposes_to")
+        if subtask_parent:
+            _append_edge(edges, seen_edges, subtask_parent, subtask.id, "decomposes_to")
 
     for state in trace.states:
         for parent_id in state.parent_ids:
@@ -117,6 +142,23 @@ def trace_to_graph(trace: Trace) -> GraphSnapshot:
 
 def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
     """Convert one event into a small graph delta for WebSocket clients."""
+
+    if event.event_type == "expert_handoff":
+        expert_id = str(event.payload.get("expert_id", event.state_id or "expert"))
+        metadata = _metadata_with_parent_ids(event)
+        return {
+            "type": "graph_node_upsert",
+            "trace_id": event.trace_id,
+            "node": {
+                "id": expert_id,
+                "label": event.payload.get("label") or f"expert\n{expert_id}",
+                "stage": "expert_router",
+                "status": "selected",
+                "score": None,
+                "summary": event.payload.get("handoff", {}).get("handoff_reason") if isinstance(event.payload.get("handoff"), dict) else None,
+                "metadata": metadata,
+            },
+        }
 
     if event.event_type == "subtask_created":
         subtask_id = str(event.payload.get("subtask_id", event.state_id or "subtask"))
@@ -237,7 +279,7 @@ def _event_state_label(event: TraceEvent) -> str:
 
 
 def _candidate_label(metadata: dict[str, Any]) -> str:
-    strategy = str(metadata.get("generation_strategy", "candidate"))
+    strategy = str(metadata.get("generation_strategy", metadata.get("branch_type", "candidate")))
     readable_strategy = strategy.replace("_", " ")
     subtask_id = metadata.get("subtask_id")
     if subtask_id:
