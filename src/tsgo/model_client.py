@@ -1,8 +1,8 @@
-"""Model client contracts for Pipeline v0.3.
+"""Model client contracts for LLM Operators.
 
-v0.3 introduces LLM-backed operators through this small provider-neutral
-interface. Production providers can implement `ModelClient.generate()`, while
-tests can use deterministic scripted clients.
+`ModelClient` is a minimal helper used inside LLM Operators. It is not a new
+Thought-State Graph execution semantic; Operator remains the only execution
+semantic.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Callable, Protocol
 
 
 class ModelClient(Protocol):
-    """Minimal model interface used by LLM-backed operators."""
+    """Minimal model interface used inside LLM Operators."""
 
     def generate(self, prompt: str) -> str:
         """Return raw model text for a prompt."""
@@ -31,10 +31,10 @@ class EchoModelClient:
 
 @dataclass(slots=True)
 class ScriptedModelClient:
-    """Deterministic JSON-returning client for v0.3 operator tests.
+    """Deterministic JSON-returning client for operator tests.
 
     Responses are consumed in order. Each prompt is recorded so tests can assert
-    that an operator actually called the model.
+    that an Operator actually called the model.
     """
 
     responses: list[str]
