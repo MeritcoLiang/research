@@ -5,6 +5,7 @@ tools, and providers are Operator implementation details that create or
 transform graph nodes.
 """
 
+from .azure_openai_client import AzureOpenAIResponsesModelClient
 from .engine import GraphRunResult, ThoughtStateGraphEngine, run_controller_as_graph
 from .events import EventSink, InMemoryEventSink, NoopEventSink, TraceEvent
 from .experts import build_secondary_market_operators
@@ -95,6 +96,7 @@ __all__ = [
     "EchoModelClient",
     "ScriptedModelClient",
     "CallbackModelClient",
+    "AzureOpenAIResponsesModelClient",
     "TraceSink",
     "JsonlTraceSink",
     "JsonTraceSink",
