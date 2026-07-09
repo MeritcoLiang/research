@@ -71,8 +71,9 @@ export default function App() {
 
   function sendMessage(message: string, llmProvider: LLMProvider) {
     if (!sessionId) return;
+    const numBranches = llmProvider === 'stage_flow' ? 6 : 1;
     setRunning(true);
-    setFinalPreview(null);
+    setFinalPreview(`任务已发送：${providerLabel(llmProvider)}，branches=${numBranches}。`);
     setSelectedNodeId(null);
     window.localStorage.removeItem(GRAPH_KEY);
     window.localStorage.removeItem(SUMMARY_KEY);
@@ -84,7 +85,7 @@ export default function App() {
         JSON.stringify({
           type: 'user_message',
           content: message,
-          num_branches: 6,
+          num_branches: numBranches,
           llm_provider: llmProvider,
         }),
       );
@@ -92,6 +93,9 @@ export default function App() {
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data) as ServerMessage;
       dispatchGraph(payload);
+      if (payload.type === 'run_started') {
+        setFinalPreview(`后端已接收任务：${payload.llm_provider}，branches=${payload.num_branches}。`);
+      }
       if (payload.type === 'pipeline_completed') {
         const summary = payload.summary as Record<string, unknown>;
         setFinalPreview(String(summary.final_draft_preview ?? ''));
@@ -103,6 +107,7 @@ export default function App() {
       if (payload.type === 'error') {
         setFinalPreview(payload.message);
         setRunning(false);
+        socket.close();
         if (payload.message.includes('未知 session_id')) {
           window.localStorage.removeItem(SESSION_KEY);
           createSession();
@@ -112,6 +117,7 @@ export default function App() {
     socket.onerror = () => {
       setFinalPreview('WebSocket 连接失败。');
       setRunning(false);
+      socket.close();
     };
   }
 
@@ -131,4 +137,13 @@ export default function App() {
       </div>
     </main>
   );
+}
+
+function providerLabel(provider: LLMProvider) {
+  const labels: Record<LLMProvider, string> = {
+    stage_flow: 'Stage Flow',
+    azure_openai: 'Azure OpenAI',
+    deepseek: 'DeepSeek',
+  };
+  return labels[provider];
 }
