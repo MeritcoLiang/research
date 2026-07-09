@@ -6,8 +6,8 @@ Web UI 的目标是让用户在浏览器里输入 message、选择 LLM / Operato
 
 ```text
 stage_flow     # SecondaryMarketAnalyst deterministic Stage flow，不调用真实 LLM
-azure_openai   # 使用 Azure OpenAI + az login 实现 LLM Operators
-deepseek       # 使用 DeepSeek OpenAI-compatible API 实现 LLM Operators
+azure_openai   # SecondaryMarketAnalyst Stage flow + Azure OpenAI 实现 LLM Operators
+deepseek       # SecondaryMarketAnalyst Stage flow + DeepSeek 实现 LLM Operators
 ```
 
 ## 可视化原则
@@ -47,17 +47,27 @@ DeepSeek                 -> llm_provider = deepseek
 {
   "type": "user_message",
   "content": "请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
-  "num_branches": 6,
+  "num_branches": 1,
   "llm_provider": "deepseek"
 }
 ```
+
+前端发送分支数策略：
+
+```text
+stage_flow   -> num_branches = 6
+azure_openai -> num_branches = 1
+deepseek     -> num_branches = 1
+```
+
+真实 LLM 默认使用 1 个 branch，避免 Web UI 长时间无响应和模型调用成本过高。
 
 后端 `SessionManager.handle_user_message()` 根据 `llm_provider` 选择运行方式：
 
 ```text
 stage_flow   -> run_secondary_market_stage_flow()
-azure_openai -> AzureOpenAIResponsesModelClient.from_env() + run_llm_pipeline_message()
-deepseek     -> DeepSeekOpenAIChatModelClient.from_env() + run_llm_pipeline_message()
+azure_openai -> AzureOpenAIResponsesModelClient.from_env() + run_secondary_market_llm_stage_flow()
+deepseek     -> DeepSeekOpenAIChatModelClient.from_env() + run_secondary_market_llm_stage_flow()
 ```
 
 注意：LLM 选择只是选择 Operator 的实现方式，不引入新的执行语义层。
@@ -169,8 +179,8 @@ HTTP message body：
 ```json
 {
   "message": "请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
-  "num_branches": 6,
-  "llm_provider": "stage_flow"
+  "num_branches": 1,
+  "llm_provider": "deepseek"
 }
 ```
 
@@ -179,6 +189,7 @@ HTTP message body：
 服务端推送：
 
 ```text
+run_started
 trace_event
 graph_node_upsert
 graph_edge_upsert
@@ -186,6 +197,8 @@ graph_node_patch
 pipeline_completed
 error
 ```
+
+`run_started` 会在后端正式开始任务时立即返回，避免真实 LLM 调用期间前端看起来“没有响应”。
 
 ## 页面布局
 
