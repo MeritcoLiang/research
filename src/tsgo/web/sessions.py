@@ -1,7 +1,8 @@
 """Session management and Web-message runtime adapter.
 
-The important invariant is that a Web UI user message calls the same
-`run_pipeline_message()` function as `tests/demo_pipeline_v02.py`.
+The Web UI currently runs the SecondaryMarketAnalyst stage flow so every user
+message produces the documented sequence:
+ExpertRouter -> 10 business stages -> ThoughtGraph / TraceEvent / GraphSnapshot.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from uuid import uuid4
 
 from ..events import EventSink
 from ..graph import trace_to_graph
-from ..runtime import run_pipeline_message
+from ..runtime import run_secondary_market_stage_flow
 from ..schema import Trace
 
 
@@ -43,14 +44,14 @@ class SessionManager:
         *,
         session_id: str,
         message: str,
-        num_branches: int = 4,
+        num_branches: int = 6,
         event_sink: EventSink | None = None,
     ) -> Trace:
-        """Run a Web UI message through the shared Pipeline v0.2 runtime."""
+        """Run a Web UI message through the documented Stage flow."""
 
         session = self.get_session(session_id)
         trace_path = self.trace_dir / f"{session_id}.jsonl"
-        trace = run_pipeline_message(
+        trace = run_secondary_market_stage_flow(
             message,
             trace_path=str(trace_path),
             num_branches=num_branches,
