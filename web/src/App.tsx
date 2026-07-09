@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import type { Node } from 'reactflow';
 import { ChatPanel } from './components/ChatPanel';
-import { EventTimeline } from './components/EventTimeline';
 import { FlowCanvas } from './components/FlowCanvas';
 import { StateInspector } from './components/StateInspector';
 import { initialGraphState, reduceServerMessage } from './graph/eventReducer';
@@ -123,7 +122,6 @@ export default function App() {
         <FlowCanvas nodes={graphState.nodes} edges={graphState.edges} onSelectNode={setSelectedNodeId} />
         <StateInspector node={selectedNode} />
       </div>
-      <EventTimeline events={graphState.events} />
     </main>
   );
 }
