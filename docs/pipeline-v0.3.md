@@ -1,26 +1,26 @@
 # Pipeline v0.3
 
-Pipeline v0.3 的目标是把 v0.2 的 deterministic mock operators 升级为 **LLM-backed operators**，同时保持 v0.2 已经稳定的状态、事件、图和 trace 契约。
+Pipeline v0.3 的目标是把 v0.2 的 deterministic mock operators 升级为 **LLM Operators**，同时保持 v0.2 已经稳定的状态、事件、图和 trace 契约。
 
 v0.3 的关键原则：
 
 ```text
-替换 operator 内部实现，不替换 orchestration contract。
+替换 Operator 内部实现，不替换 orchestration contract。
 ```
 
 也就是说：
 
 ```text
-PipelineController / ThoughtState / OperatorResult / Trace / TraceEvent / GraphSnapshot
+PipelineController / ThoughtState / OperatorResult / Trace / TraceEvent / GraphSnapshot / ThoughtGraph
 ```
 
-这些外层契约保持不变，变化只发生在 operator 内部：从 deterministic mock 逻辑变成 `Prompter -> ModelClient -> JSON parser -> ThoughtState`。
+这些外层契约保持不变，变化只发生在 Operator 内部：从 deterministic mock 逻辑变成 `Prompter -> ModelClient -> JSON parser -> ThoughtState`。
 
 ## v0.3 新增模块
 
 ```text
 src/tsgo/json_contracts.py   # LLM JSON 输出解析与 schema coercion
-src/tsgo/llm_operators.py    # LLM-backed Generate / Normalize / Score / Improve / Aggregate / Validate
+src/tsgo/llm_operators.py    # 使用 LLM 实现 Generate / Normalize / Score / Improve / Aggregate / Validate Operators
 src/tsgo/model_client.py     # ScriptedModelClient / CallbackModelClient，用于测试与本地验证
 ```
 
@@ -57,18 +57,18 @@ TaskIntakeOperator                 # 仍复用 deterministic 分类
 ContextBuilderOperator             # 仍复用 deterministic 上下文整理
 RubricBuilderOperator              # 仍复用 deterministic rubric
 ProblemDecomposerOperator          # 仍复用 deterministic subtask 拆解
-LLMCandidateGeneratorOperator      # model-backed
-LLMThoughtNormalizerOperator       # model-backed
-LLMVerifierScorerOperator          # model-backed
-LLMImproverOperator                # model-backed
-LLMAggregatorOperator              # model-backed + diversity-aware top-k
-LLMFinalValidatorOperator          # model-backed
+LLMCandidateGeneratorOperator      # 使用 LLM 实现
+LLMThoughtNormalizerOperator       # 使用 LLM 实现
+LLMVerifierScorerOperator          # 使用 LLM 实现
+LLMImproverOperator                # 使用 LLM 实现
+LLMAggregatorOperator              # 使用 LLM 实现 + diversity-aware top-k
+LLMFinalValidatorOperator          # 使用 LLM 实现
 trace persistence                  # controller 末尾统一落盘
 ```
 
 ## JSON 合约
 
-v0.3 强制每个 LLM-backed operator 经过 JSON parser：
+v0.3 强制每个 LLM Operator 经过 JSON parser：
 
 ```text
 GenerateOperator   -> parse_generate_packet
@@ -106,7 +106,7 @@ v0.3 的 `LLMAggregatorOperator` 使用 diversity-aware top-k：
 
 ## 本地 demo
 
-v0.3 可以在无 API key 情况下用 `ScriptedModelClient` 验证完整 LLM-backed operator path：
+v0.3 可以在无 API key 情况下用 `ScriptedModelClient` 验证完整 LLM Operator path：
 
 ```bash
 python tests/demo_pipeline_v03.py "进入 Pipeline v0.3" --num-branches 1
@@ -115,7 +115,7 @@ python tests/demo_pipeline_v03.py "进入 Pipeline v0.3" --num-branches 1
 该 demo 使用 scripted JSON responses，不验证模型能力，只验证：
 
 ```text
-Prompter -> ModelClient -> JSON contracts -> LLM operators -> Trace / Events / Graph
+Prompter -> ModelClient -> JSON contracts -> LLM Operators -> Trace / Events / Graph
 ```
 
 ## 测试
@@ -129,16 +129,16 @@ tests/test_llm_pipeline.py
 测试内容：
 
 - `run_llm_pipeline_message()` 可以端到端跑通；
-- LLM-backed states 带 `operator_mode = llm_v0.3`；
+- LLM states 带 `operator_mode = llm_v0.3`；
 - final state 为 `validated`；
 - trace 会完整落盘；
 - scripted model 的 prompt 调用次数符合预期。
 
 ## v0.3 非目标
 
-v0.3 当前不绑定任何单一模型供应商，也不强制引入 OpenAI / Anthropic / Gemini SDK。
+v0.3 当前不做真实模型供应商接入，也不引入 OpenAI / Azure OpenAI / DeepSeek SDK。
 
-真实 provider 只需要实现：
+`ModelClient` 只是 LLM Operators 内部的临时辅助接口，用于 scripted tests：
 
 ```python
 class ModelClient(Protocol):
@@ -146,21 +146,24 @@ class ModelClient(Protocol):
         ...
 ```
 
-这让 v0.3 保持 provider-neutral。后续可以按部署需求增加：
+后续真实模型接入只限：
 
-- OpenAIModelClient
-- AnthropicModelClient
-- LocalHTTPModelClient
-- LiteLLMModelClient
+```text
+OpenAI
+Azure OpenAI
+DeepSeek
+```
+
+不接入 Anthropic、Gemini、LiteLLM、Any-LLM、Ollama、vLLM、OpenRouter，也不引入通用 provider router。
 
 ## v0.3 完成标准
 
 当前 v0.3 的完成标准：
 
-1. LLM-backed operators 已存在；
+1. LLM Operators 已存在；
 2. 每个 model output 都经过结构化 JSON contract parser；
 3. v0.2 mock runtime 不被破坏；
 4. v0.3 runtime 可通过 scripted model 端到端运行；
 5. Aggregator 使用 diversity-aware top-k；
-6. Trace / Event / Graph 契约保持兼容；
+6. Trace / Event / Graph / ThoughtGraph 契约保持兼容；
 7. 文档、demo、测试同步更新。
