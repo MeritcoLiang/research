@@ -1,9 +1,10 @@
 """Core Thought-State Graph domain model.
 
 This module is the project center of gravity. LLMs, Agents SDK, prompts, tools,
-and providers are execution details. The engine's durable object is a graph of
-ThoughtState nodes plus explicit edges between decomposition, generation,
-normalization, scoring, improvement, aggregation, and validation.
+and providers are Operator implementation details. The engine's durable object
+is a graph of ThoughtState, Subtask, and ExpertProfile nodes plus explicit
+edges between handoff, decomposition, generation, normalization, scoring,
+improvement, aggregation, and validation.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from .schema import Subtask, ThoughtState, Trace
 
 ThoughtEdgeType = Literal[
     "root",
+    "handoff",
     "decomposes_to",
     "generates",
     "normalizes",
@@ -32,12 +34,7 @@ ThoughtEdgeType = Literal[
 
 @dataclass(slots=True)
 class ThoughtEdge:
-    """Directed edge between thought graph nodes.
-
-    `source` and `target` may point to either a ThoughtState id or a Subtask id.
-    Subtasks are first-class graph nodes because candidate states often use
-    subtask ids as parents.
-    """
+    """Directed edge between thought graph nodes."""
 
     id: str
     source: str
@@ -57,6 +54,7 @@ class ThoughtGraph:
     user_query: str
     states: dict[str, ThoughtState] = field(default_factory=dict)
     subtasks: dict[str, Subtask] = field(default_factory=dict)
+    expert_profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     edges: list[ThoughtEdge] = field(default_factory=list)
     root_id: str | None = None
     final_state_id: str | None = None
@@ -69,6 +67,9 @@ class ThoughtGraph:
 
     def add_subtask(self, subtask: Subtask) -> None:
         self.subtasks[subtask.id] = subtask
+
+    def add_expert_profile(self, expert_id: str, metadata: dict[str, Any]) -> None:
+        self.expert_profiles[expert_id] = metadata
 
     def add_edge(
         self,
@@ -88,7 +89,7 @@ class ThoughtGraph:
         return edge
 
     def node_ids(self) -> set[str]:
-        return set(self.states) | set(self.subtasks)
+        return set(self.states) | set(self.subtasks) | set(self.expert_profiles)
 
     def missing_edge_refs(self) -> list[ThoughtEdge]:
         ids = self.node_ids()
@@ -101,12 +102,7 @@ class ThoughtGraph:
         return [edge.target for edge in self.edges if edge.source == node_id]
 
     def lineage(self, node_id: str) -> list[str]:
-        """Return one parent lineage from root/subtask to the requested node.
-
-        The graph can contain aggregation nodes with multiple parents. This
-        method returns a deterministic first-parent lineage for lightweight UI
-        highlighting; full lineage views should use `parents_of` recursively.
-        """
+        """Return one parent lineage from root/expert/subtask to the requested node."""
 
         seen: set[str] = set()
         path: list[str] = []
@@ -147,6 +143,7 @@ class ThoughtGraph:
             "final_state_id": self.final_state_id,
             "states": {state_id: state.to_dict() for state_id, state in self.states.items()},
             "subtasks": {subtask_id: asdict(subtask) for subtask_id, subtask in self.subtasks.items()},
+            "expert_profiles": self.expert_profiles,
             "edges": [edge.to_dict() for edge in self.edges],
             "metadata": self.metadata,
         }
@@ -164,9 +161,19 @@ class ThoughtGraph:
         for subtask in trace.subtasks:
             graph.add_subtask(subtask)
 
-        if graph.root_id:
+        handoff = trace.metadata.get("expert_handoff")
+        expert_id: str | None = None
+        if isinstance(handoff, dict):
+            expert_id = str(handoff.get("selected_expert", "")) or None
+            if expert_id:
+                graph.add_expert_profile(expert_id, handoff)
+                if graph.root_id:
+                    graph.add_edge(graph.root_id, expert_id, "handoff")
+
+        subtask_parent = expert_id or graph.root_id
+        if subtask_parent:
             for subtask in trace.subtasks:
-                graph.add_edge(graph.root_id, subtask.id, "decomposes_to")
+                graph.add_edge(subtask_parent, subtask.id, "decomposes_to")
 
         for state in trace.states:
             for parent_id in state.parent_ids:
