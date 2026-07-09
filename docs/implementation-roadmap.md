@@ -1,5 +1,18 @@
 # 实施路线图
 
+## 设计约束
+
+从 v0.4 开始，路线收敛为“小而强”的工程系统，不做大而全兼容层。
+
+硬约束：
+
+1. **Agents SDK 优先**：如果 OpenAI Agents SDK 能满足需求，就不直接接入 Responses API。
+2. **Structured output 强制**：能用 `output_type` / structured output，就不保留 prompt JSON fallback。
+3. **模型范围收窄**：LLM 只兼容 OpenAI、Azure OpenAI、DeepSeek。
+4. **不做通用 provider router**：不接入 Anthropic、Gemini、LiteLLM、Any-LLM、Ollama、vLLM、OpenRouter 等泛化适配。
+5. **不做多套并行路径**：同一阶段只保留一条主路径，除非真实运行验证证明必须拆分。
+6. **Prompter 降级为兼容层**：主路径使用 structured schema、Agent output type、tools 和 guardrails。
+
 ## v0.1：设计脚手架
 
 状态：已完成。
@@ -77,40 +90,126 @@ tsgo.runtime.run_pipeline_message(message)
 python tests/demo_pipeline_v03.py "进入 Pipeline v0.3" --num-branches 1
 ```
 
-## v0.4：工具感知 verifier
+## v0.4：Agents SDK 主路径
 
-目标：当纯语言验证不可靠时，引入外部工具。
+目标：用 OpenAI Agents SDK 替换当前 LLM operator 内部的手写 model loop。
 
-任务：
+保留：
 
-- 代码执行 hooks
-- 检索 hooks
-- 引用验证 hooks
-- 计算 hooks
-- policy / safety checker hooks
-- Web UI 中展示 tool call / tool output / verifier result
+```text
+PipelineController
+ThoughtState
+Trace
+TraceEvent
+GraphSnapshot
+Web UI
+```
 
-## v0.5：DAG controller
+替换：
 
-目标：从固定线性 pipeline 升级到按任务定制的 DAG 执行。
+```text
+Prompter -> ModelClient -> parse_json
+```
 
-任务：
+为：
 
-- 显式 state graph store
-- edge metadata
-- 依赖感知 scheduler
-- 按 subtask 分支
-- top-k pruning
+```text
+Agent -> Runner -> output_type -> structured result
+```
 
-## v1.0：Thought-State Graph Orchestration Engine
+只实现这些文件：
 
-目标：在 thought states 上进行任意图搜索。
+```text
+src/tsgo/agents/runtime.py
+src/tsgo/agents/operators.py
+src/tsgo/agents/schemas.py
+src/tsgo/agents/model_config.py
+```
 
-能力：
+不做：
 
-- best-first search
-- beam search
-- MCTS-style expansion
-- learned 或 hybrid verifier
-- adaptive test-time compute
-- trace-to-training-data export
+```text
+providers/base.py
+MultiProvider
+LiteLLMProvider
+AnyLLMProvider
+LocalHTTPProvider
+通用 provider capability matrix
+```
+
+## v0.5：三类模型接入
+
+目标：只接入 OpenAI、Azure OpenAI、DeepSeek。
+
+实现顺序：
+
+1. `OpenAIAgentBackend`：默认路径，使用 Agents SDK 原生 OpenAI model。
+2. `AzureOpenAIAgentBackend`：只在 Agents SDK 的内置 provider / OpenAI-compatible client 能满足时实现。
+3. `DeepSeekAgentBackend`：仅作为 OpenAI-compatible endpoint 接入；如果 structured output 不稳定，就不进入主路径。
+
+不接入其他模型。
+
+## v0.6：Structured-only operators
+
+目标：删除 prompt JSON fallback，把所有 v0.3 JSON parser 降级为测试兼容层。
+
+每个 operator 必须有 Pydantic output schema：
+
+```text
+GenerateOutput
+NormalizeOutput
+ScoreOutput
+ImproveOutput
+AggregateOutput
+ValidateOutput
+```
+
+如果某个后端不支持 structured output：
+
+```text
+该后端不支持这个阶段。
+```
+
+不再做：
+
+```text
+模型输出文本 -> 猜 JSON -> 修 JSON -> fallback prompt
+```
+
+## v0.7：最小工具系统
+
+目标：只把 verifier 必需工具接入 Agents SDK function tools。
+
+第一批工具只做：
+
+```text
+run_python_check
+run_unit_tests
+verify_citation
+calculate
+```
+
+工具注册不做通用 marketplace，不做动态插件系统。
+
+## v0.8：收敛后的 Thought-State Graph Engine
+
+目标：在不扩大模型兼容面的情况下，把当前线性 pipeline 升级为可搜索图。
+
+只做：
+
+```text
+beam search
+best-first search
+diversity-aware aggregation
+trace replay
+Web UI final lineage / full graph 切换
+```
+
+不做：
+
+```text
+MCTS 泛化框架
+任意 workflow DSL
+跨供应商模型竞价/路由
+插件市场
+```
