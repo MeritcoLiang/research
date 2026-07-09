@@ -6,14 +6,16 @@ LLM、Agents SDK、structured output、tools、provider client 都只是 **Opera
 
 ## 核心对象
 
-v0.4 开始，系统的中心对象是：
+系统的中心对象是：
 
 ```text
 ThoughtGraph
   nodes:
     ThoughtState
     Subtask
+    ExpertProfile
   edges:
+    handoff
     decomposes_to
     generates
     normalizes
@@ -30,6 +32,7 @@ ThoughtGraph
 ```text
 src/tsgo/thought_graph.py
 src/tsgo/engine.py
+src/tsgo/experts/secondary_market.py
 ```
 
 其中：
@@ -48,6 +51,43 @@ ThoughtStateGraphEngine(controller).run(message)
 
 ```python
 GraphRunResult(trace, thought_graph)
+```
+
+## Stage Flow 已跑通的形态
+
+SecondaryMarketAnalyst 当前已经按文档跑通：
+
+```text
+User Message
+  -> Root ThoughtState
+  -> ExpertRouter / handoff: SecondaryMarketAnalyst
+  -> 01 Task Intake
+  -> 02 Context Builder
+  -> 03 Rubric Builder
+  -> 04 Problem Decomposer
+  -> 05 Candidate Generator
+  -> 06 Thought Normalizer
+  -> 07 Verifier / Scorer
+  -> 08 Improver
+  -> 09 Aggregator
+  -> 10 Final Validator
+  -> Trace / ThoughtGraph / GraphSnapshot
+```
+
+对应实时 UI 事件：
+
+```text
+pipeline_started
+state_created(root)
+expert_handoff
+edge_created(root -> expert)
+stage_started / stage_completed
+subtask_created
+edge_created(expert -> subtask)
+state_created(candidate/normalized/scored/aggregation/validation)
+score_updated
+pipeline_completed
+trace_persisted
 ```
 
 ## 为什么要这样修正
@@ -94,11 +134,14 @@ Thought-State Graph Engine
 ```text
 ThoughtGraph
 ThoughtEdge
+ExpertProfile graph node
 trace_to_thought_graph
 GraphRunResult
 ThoughtStateGraphEngine
 run_pipeline_graph
 run_llm_pipeline_graph
+run_secondary_market_stage_flow
+run_secondary_market_graph
 ```
 
 这些让系统的输出不再只是 `Trace`，而是显式的 `ThoughtGraph`。
