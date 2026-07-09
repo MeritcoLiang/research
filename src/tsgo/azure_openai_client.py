@@ -34,7 +34,7 @@ class AzureOpenAIResponsesModelClient:
     endpoint: str
     deployment: str
     system_message: str = "你是 Thought-State Graph Orchestration Engine 中的 Operator。必须严格遵守请求的结构化输出约束。"
-    temperature: float = 0.2
+    temperature: float | None = 0.2
     max_output_tokens: int | None = 2048
     token_scope: str = DEFAULT_AZURE_OPENAI_SCOPE
     timeout: float | None = 90.0
@@ -58,24 +58,24 @@ class AzureOpenAIResponsesModelClient:
                 "AZURE_OPENAI_SYSTEM_MESSAGE",
                 "你是 Thought-State Graph Orchestration Engine 中的 Operator。必须严格遵守请求的结构化输出约束。",
             ),
-            temperature=float(os.getenv("AZURE_OPENAI_TEMPERATURE", "0.2")),
+            temperature=_optional_float(os.getenv("AZURE_OPENAI_TEMPERATURE", "0.2")),
             max_output_tokens=_optional_int(os.getenv("AZURE_OPENAI_MAX_OUTPUT_TOKENS", "2048")),
             token_scope=os.getenv("AZURE_OPENAI_TOKEN_SCOPE", DEFAULT_AZURE_OPENAI_SCOPE),
-            timeout=float(os.getenv("AZURE_OPENAI_TIMEOUT", "90")),
+            timeout=_optional_float(os.getenv("AZURE_OPENAI_TIMEOUT", "90")),
         )
 
     def generate(self, prompt: str) -> str:
         self.prompts.append(prompt)
         client = self._client()
-        response = client.responses.create(
-            model=self.deployment,
-            input=[
-                {"role": "system", "content": self.system_message},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=self.temperature,
-            max_output_tokens=self.max_output_tokens,
-        )
+        request: dict[str, Any] = {
+            "model": self.deployment,
+            "input": f"{self.system_message}\n\n{prompt}",
+        }
+        if self.temperature is not None:
+            request["temperature"] = self.temperature
+        if self.max_output_tokens is not None:
+            request["max_output_tokens"] = self.max_output_tokens
+        response = client.responses.create(**request)
         text = getattr(response, "output_text", None)
         if text:
             return str(text)
@@ -110,6 +110,12 @@ def _optional_int(value: str | None) -> int | None:
     if value is None or not value.strip():
         return None
     return int(value)
+
+
+def _optional_float(value: str | None) -> float | None:
+    if value is None or not value.strip():
+        return None
+    return float(value)
 
 
 def _extract_output_text(response: Any) -> str:
