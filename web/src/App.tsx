@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import type { Node } from 'reactflow';
-import { ChatPanel } from './components/ChatPanel';
+import { ChatPanel, type LLMProvider } from './components/ChatPanel';
 import { FlowCanvas } from './components/FlowCanvas';
 import { StateInspector } from './components/StateInspector';
 import { initialGraphState, reduceServerMessage } from './graph/eventReducer';
@@ -69,7 +69,7 @@ export default function App() {
     [graphState.nodes, selectedNodeId],
   );
 
-  function sendMessage(message: string) {
+  function sendMessage(message: string, llmProvider: LLMProvider) {
     if (!sessionId) return;
     setRunning(true);
     setFinalPreview(null);
@@ -80,7 +80,14 @@ export default function App() {
 
     const socket = new WebSocket(wsUrl(`/ws/sessions/${sessionId}`));
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: 'user_message', content: message, num_branches: 6 }));
+      socket.send(
+        JSON.stringify({
+          type: 'user_message',
+          content: message,
+          num_branches: 6,
+          llm_provider: llmProvider,
+        }),
+      );
     };
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data) as ServerMessage;
