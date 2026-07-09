@@ -29,7 +29,7 @@ PIPELINE_STAGE_ORDER = [
 
 @dataclass(slots=True)
 class PipelineConfig:
-    """Runtime configuration for Pipeline v0.2."""
+    """Runtime configuration for Pipeline v0.2+ stage flows."""
 
     default_num_branches: int = 8
     max_improvement_rounds: int = 2
@@ -147,6 +147,9 @@ class PipelineController:
                     payload={"overall": state.score.overall, "score": asdict(state.score)},
                 )
 
+        if result.metadata.get("expert_handoff"):
+            self._emit_expert_handoff(trace, result.metadata["expert_handoff"])
+
         if stage_name == "problem_decomposer":
             self._emit_subtask_events(trace)
 
@@ -168,6 +171,32 @@ class PipelineController:
                 "metadata": result.metadata,
             },
         )
+
+    def _emit_expert_handoff(self, trace: Trace, handoff: dict[str, Any]) -> None:
+        root_id = next((state.id for state in trace.states if state.stage == "root"), None)
+        expert_id = str(handoff.get("selected_expert", "expert"))
+        self._emit(
+            trace,
+            "expert_handoff",
+            stage="expert_router",
+            state_id=expert_id,
+            parent_ids=[root_id] if root_id else [],
+            payload={
+                "expert_id": expert_id,
+                "label": f"expert\n{expert_id}",
+                "handoff": handoff,
+                "metadata": {"expert_profile": expert_id, "parent_ids": [root_id] if root_id else []},
+            },
+        )
+        if root_id:
+            self._emit(
+                trace,
+                "edge_created",
+                stage="expert_router",
+                state_id=expert_id,
+                parent_ids=[root_id],
+                payload={"source": root_id, "target": expert_id, "edge_type": "handoff"},
+            )
 
     def _persist_final_trace(self, trace: Trace) -> None:
         if not self.config.enable_trace_logging:
@@ -208,30 +237,34 @@ class PipelineController:
 
     def _emit_subtask_events(self, trace: Trace) -> None:
         root_id = next((state.id for state in trace.states if state.stage == "root"), None)
+        expert = trace.metadata.get("expert_handoff", {}).get("selected_expert")
+        source_id = str(expert) if expert else root_id
         for subtask in trace.subtasks:
             self._emit(
                 trace,
                 "subtask_created",
                 stage="problem_decomposer",
                 state_id=subtask.id,
+                parent_ids=[source_id] if source_id else [],
                 payload={
                     "subtask_id": subtask.id,
                     "question": subtask.question,
                     "metadata": {
                         "required_outputs": subtask.required_outputs,
                         "dependencies": subtask.dependencies,
+                        "parent_ids": [source_id] if source_id else [],
                         **subtask.metadata,
                     },
                 },
             )
-            if root_id:
+            if source_id:
                 self._emit(
                     trace,
                     "edge_created",
                     stage="problem_decomposer",
                     state_id=subtask.id,
-                    parent_ids=[root_id],
-                    payload={"source": root_id, "target": subtask.id, "edge_type": "decomposes_to"},
+                    parent_ids=[source_id],
+                    payload={"source": source_id, "target": subtask.id, "edge_type": "decomposes_to"},
                 )
 
     def _emit_state_event(self, trace: Trace, event_type: str, state: ThoughtState) -> None:
