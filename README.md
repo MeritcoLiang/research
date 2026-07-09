@@ -1,25 +1,41 @@
 # Thought-State Graph Orchestration Engine
 
-本仓库是 **Thought-State Graph Orchestration Engine（思维状态图编排引擎）** 的工程落地区。当前实现目标已经进入 **Pipeline v0.2**：在 v0.1 的设计脚手架基础上，跑通 Prompter 契约、mock operators、JSON parser、trace 持久化、事件流、Web UI 和测试目录下的 demo adapter。
+本仓库是 **Thought-State Graph Orchestration Engine（思维状态图编排引擎）** 的工程落地区。当前实现目标已经进入 **Pipeline v0.3**：在 v0.2 的 mock runner、事件流、Web UI 和 trace graph 基础上，新增 LLM-backed operators 与结构化 JSON contracts。
 
 项目的核心判断是：高质量 AI 回答不应该来自一次简单的 prompt-response 调用。每一个中间 thought 都应该被结构化、评分、改进、验证、聚合和记录。
 
-## 当前目标：Pipeline v0.2
+## 当前目标：Pipeline v0.3
 
-Pipeline v0.2 暂时不接入真实 LLM，也不实现任意图调度。它先验证工程闭环：
+Pipeline v0.3 的目标不是推翻 v0.2，而是替换 operator 内部实现：
 
 ```text
-Prompter integration
-  -> structured JSON contracts
-  -> mock model boundary
-  -> deterministic operators
-  -> realtime trace events
-  -> trace persistence
-  -> test demo adapter
-  -> Web UI adapter
+v0.2: deterministic mock operators
+v0.3: Prompter -> ModelClient -> JSON parser -> LLM-backed operators
 ```
 
-当前 pipeline 阶段顺序仍然沿用 v0.1：
+保持不变的契约：
+
+```text
+ThoughtState
+OperatorResult
+PipelineController
+Trace
+TraceEvent
+GraphSnapshot
+```
+
+新增能力：
+
+```text
+LLM-backed operators
+  -> structured JSON contract parsers
+  -> provider-neutral ModelClient
+  -> ScriptedModelClient tests
+  -> diversity-aware aggregation
+  -> v0.3 demo adapter
+```
+
+当前 pipeline 阶段顺序仍然沿用 v0.1/v0.2：
 
 ```text
 User Query
@@ -42,23 +58,26 @@ User Query
 
 第二条工程原则：
 
-> Web UI 输入 message 和 `python tests/demo_pipeline_v02.py "进入 Pipeline v0.2"` 必须调用同一个 runtime 入口。
+> Web UI 输入 message 和 `python tests/demo_pipeline_v02.py "进入 Pipeline v0.2"` 必须调用同一个 v0.2 runtime 入口。
+
+第三条工程原则：
+
+> v0.3 只替换 operator 内部模型调用，不破坏 v0.2 的 Trace / Event / Graph / Web UI 契约。
 
 ## 快速运行
 
-测试目录下的 demo adapter：
+v0.2 deterministic demo adapter：
 
 ```bash
 pip install -e .
 python tests/demo_pipeline_v02.py "进入 Pipeline v0.2"
 ```
 
-可选：输出 pretty JSON trace：
+v0.3 scripted LLM demo adapter：
 
 ```bash
-python tests/demo_pipeline_v02.py "进入 Pipeline v0.2" \
-  --trace-path traces/pipeline_traces.jsonl \
-  --pretty-trace traces/latest_trace.json
+pip install -e .
+python tests/demo_pipeline_v03.py "进入 Pipeline v0.3" --num-branches 1
 ```
 
 Web UI 后端：
@@ -76,12 +95,21 @@ npm install
 npm run dev
 ```
 
-## 单一 runtime 入口
+## Runtime 入口
 
-CLI demo 和 Web UI 都调用：
+v0.2 mock runtime：
 
 ```python
 tsgo.runtime.run_pipeline_message(message)
+```
+
+v0.3 LLM-backed runtime：
+
+```python
+tsgo.runtime.run_llm_pipeline_message(
+    message,
+    model_client=model_client,
+)
 ```
 
 调用链：
@@ -99,9 +127,14 @@ Web UI message
   -> PipelineController
   -> mock operators
   -> Trace / TraceEvents / Graph
-```
 
-因此两条路径的 pipeline 语义一致，差异只在输出介质：一个输出到 terminal，一个输出到 WebSocket + 实时流程图。
+tests/demo_pipeline_v03.py
+  -> tsgo.runtime.run_llm_pipeline_message
+  -> PipelineController
+  -> LLM-backed operators
+  -> ModelClient / JSON contracts
+  -> Trace / TraceEvents / Graph
+```
 
 ## 仓库结构
 
@@ -114,6 +147,8 @@ Web UI message
 │       ├── __init__.py
 │       ├── events.py
 │       ├── graph.py
+│       ├── json_contracts.py
+│       ├── llm_operators.py
 │       ├── mock_operators.py
 │       ├── model_client.py
 │       ├── operators.py
@@ -135,6 +170,7 @@ Web UI message
 │   ├── json-contracts.md
 │   ├── pipeline-v0.1.md
 │   ├── pipeline-v0.2.md
+│   ├── pipeline-v0.3.md
 │   ├── web-ui.md
 │   ├── implementation-roadmap.md
 │   ├── prompter-interface.md
@@ -158,14 +194,17 @@ Web UI message
 │   └── pipeline_trace_example.json
 ├── tests/
 │   ├── demo_pipeline_v02.py
+│   ├── demo_pipeline_v03.py
 │   ├── test_event_stream.py
 │   ├── test_graph_adapter.py
+│   ├── test_llm_pipeline.py
 │   ├── test_mock_pipeline.py
 │   └── test_web_message_equivalence.py
 └── web/
     ├── index.html
     ├── package.json
     ├── tsconfig.json
+    ├── vite.config.ts
     └── src/
         ├── App.tsx
         ├── style.css
@@ -185,6 +224,7 @@ Web UI message
 - [架构说明](docs/architecture.md)
 - [Pipeline v0.1](docs/pipeline-v0.1.md)
 - [Pipeline v0.2](docs/pipeline-v0.2.md)
+- [Pipeline v0.3](docs/pipeline-v0.3.md)
 - [Web UI 设计](docs/web-ui.md)
 - [事件流设计](docs/event-stream.md)
 - [JSON 契约](docs/json-contracts.md)
@@ -199,11 +239,13 @@ Web UI message
 
 1. `ThoughtState`：一个候选答案、子答案、批评、修订、聚合结果或最终回复。
 2. `Operator`：把一个或多个状态转换成一个或多个状态的算子。
-3. `PipelineController`：执行当前固定阶段顺序的 Pipeline v0.2 控制器。
+3. `PipelineController`：执行当前固定阶段顺序的控制器。
 4. `Trace`：记录全部状态、评分、改进和验证结果的可回放轨迹。
 5. `TraceEvent`：Web UI 和测试用于实时观察 pipeline 的事件。
 6. `GraphSnapshot`：将 Trace 映射为前端可渲染的 nodes / edges。
-7. `run_pipeline_message()`：CLI demo 和 Web UI 共用的唯一 runtime 入口。
+7. `ModelClient`：v0.3 LLM-backed operators 的 provider-neutral 模型接口。
+8. `run_pipeline_message()`：v0.2 mock runtime 入口。
+9. `run_llm_pipeline_message()`：v0.3 LLM-backed runtime 入口。
 
 ## Prompter 接口映射
 
@@ -221,27 +263,26 @@ Web UI message
 
 ## 开发状态
 
-当前状态：**Pipeline v0.2 Web UI + event stream 设计已落地**。
+当前状态：**Pipeline v0.3 LLM-backed operator scaffold 已落地**。
 
 已经完成：
 
-- 所有阶段的中文文档
-- Python schema / operator / pipeline controller 骨架
-- Prompter 契约与默认 prompt templates
-- ModelClient 边界与 EchoModelClient
-- JSON parser helper
-- deterministic mock operators
-- JSONL / JSON trace sinks
+- v0.2 Web UI + event stream + trace graph
 - `TraceEvent` 事件流
 - `Trace -> GraphSnapshot` 转换
+- 左到右语义流程图布局
+- JSONL / JSON trace sinks
 - `tests/demo_pipeline_v02.py` demo adapter
-- FastAPI Web backend
-- React + React Flow Web frontend骨架
-- mock pipeline、event stream、graph adapter、Web message equivalence 测试
+- `tests/demo_pipeline_v03.py` scripted LLM demo adapter
+- `json_contracts.py` 结构化 JSON parser
+- `llm_operators.py` LLM-backed operators
+- `ScriptedModelClient` / `CallbackModelClient`
+- diversity-aware aggregation
+- mock pipeline、event stream、graph adapter、Web message equivalence、LLM pipeline 测试
 
 尚未完成：
 
-- 真实 model client 集成
+- 真实 provider client 集成，例如 OpenAI / Anthropic / 本地 HTTP 模型
 - production-grade JSON repair
 - 工具执行运行时
 - learned verifier / reward model
@@ -249,17 +290,18 @@ Web UI message
 
 ## 下一阶段
 
-下一阶段是 **Pipeline v0.3**：
+下一阶段是 **Pipeline v0.4**：
 
 ```text
-LLM-backed operators
-  -> structured JSON parser hardening
-  -> scorer / improver / aggregator 真实模型接入
-  -> trace-based evals
-  -> operator-level regression tests
+Tool-aware verifier
+  -> code execution hooks
+  -> retrieval hooks
+  -> citation verification hooks
+  -> calculation hooks
+  -> policy / safety checker hooks
 ```
 
-v0.3 稳定后，系统可以继续演进为：
+v0.4 稳定后，系统可以继续演进为：
 
 ```text
 linear pipeline -> DAG controller -> graph controller -> search policy engine -> learned verifier loop
