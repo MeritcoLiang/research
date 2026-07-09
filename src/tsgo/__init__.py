@@ -10,7 +10,7 @@ from .deepseek_client import DeepSeekOpenAIChatModelClient
 from .engine import GraphRunResult, ThoughtStateGraphEngine, run_controller_as_graph
 from .env import load_env_file
 from .events import EventSink, InMemoryEventSink, NoopEventSink, TraceEvent
-from .experts import build_secondary_market_operators
+from .experts import build_secondary_market_llm_operators, build_secondary_market_operators
 from .graph import GraphEdge, GraphNode, GraphSnapshot, event_to_graph_delta, trace_to_graph
 from .json_contracts import (
     parse_aggregate_packet,
@@ -32,6 +32,7 @@ from .runtime import (
     DEFAULT_SECONDARY_MARKET_QUERY,
     DEFAULT_V03_QUERY,
     build_secondary_market_controller,
+    build_secondary_market_llm_controller,
     build_v02_controller,
     build_v03_controller,
     run_llm_pipeline_graph,
@@ -39,6 +40,8 @@ from .runtime import (
     run_pipeline_graph,
     run_pipeline_message,
     run_secondary_market_graph,
+    run_secondary_market_llm_graph,
+    run_secondary_market_llm_stage_flow,
     run_secondary_market_stage_flow,
 )
 from .schema import (
@@ -117,16 +120,20 @@ __all__ = [
     "build_mock_operators",
     "build_llm_operators",
     "build_secondary_market_operators",
+    "build_secondary_market_llm_operators",
     "DEFAULT_QUERY",
     "DEFAULT_V03_QUERY",
     "DEFAULT_SECONDARY_MARKET_QUERY",
     "build_v02_controller",
     "build_v03_controller",
     "build_secondary_market_controller",
+    "build_secondary_market_llm_controller",
     "run_pipeline_message",
     "run_pipeline_graph",
     "run_secondary_market_stage_flow",
     "run_secondary_market_graph",
+    "run_secondary_market_llm_stage_flow",
+    "run_secondary_market_llm_graph",
     "run_llm_pipeline_message",
     "run_llm_pipeline_graph",
     "TraceEvent",
