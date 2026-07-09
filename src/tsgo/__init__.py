@@ -1,11 +1,13 @@
 """Thought-State Graph Orchestration Engine package.
 
 The core artifact is a ThoughtGraph. Pipelines, LLM operators, Agents SDK,
-tools, and providers are execution details that create or transform graph nodes.
+tools, and providers are Operator implementation details that create or
+transform graph nodes.
 """
 
 from .engine import GraphRunResult, ThoughtStateGraphEngine, run_controller_as_graph
 from .events import EventSink, InMemoryEventSink, NoopEventSink, TraceEvent
+from .experts import build_secondary_market_operators
 from .graph import GraphEdge, GraphNode, GraphSnapshot, event_to_graph_delta, trace_to_graph
 from .json_contracts import (
     parse_aggregate_packet,
@@ -24,13 +26,17 @@ from .pipeline import PipelineConfig, PipelineController
 from .prompter import DefaultPipelinePrompter, Prompter
 from .runtime import (
     DEFAULT_QUERY,
+    DEFAULT_SECONDARY_MARKET_QUERY,
     DEFAULT_V03_QUERY,
+    build_secondary_market_controller,
     build_v02_controller,
     build_v03_controller,
     run_llm_pipeline_graph,
     run_llm_pipeline_message,
     run_pipeline_graph,
     run_pipeline_message,
+    run_secondary_market_graph,
+    run_secondary_market_stage_flow,
 )
 from .schema import (
     Claim,
@@ -104,12 +110,17 @@ __all__ = [
     "parse_validation_packet",
     "build_mock_operators",
     "build_llm_operators",
+    "build_secondary_market_operators",
     "DEFAULT_QUERY",
     "DEFAULT_V03_QUERY",
+    "DEFAULT_SECONDARY_MARKET_QUERY",
     "build_v02_controller",
     "build_v03_controller",
+    "build_secondary_market_controller",
     "run_pipeline_message",
     "run_pipeline_graph",
+    "run_secondary_market_stage_flow",
+    "run_secondary_market_graph",
     "run_llm_pipeline_message",
     "run_llm_pipeline_graph",
     "TraceEvent",
