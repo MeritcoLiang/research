@@ -2,11 +2,19 @@
 
 本仓库是 **Thought-State Graph Orchestration Engine（思维状态图编排引擎）** 的工程落地区。当前主线已经修正为：**ThoughtGraph 是核心产物；LLM、Agents SDK、structured output、tools、provider client 都只是 Operator 的实现细节**。
 
-项目的核心判断是：高质量 AI 回答不应该来自一次简单的 prompt-response 调用。每一个中间 thought 都应该被结构化、评分、改进、验证、聚合、记录，并进入可查询的 thought-state graph。
+高质量 AI 回答不应该来自一次简单的 prompt-response 调用。每一个中间 thought 都应该被结构化、评分、改进、验证、聚合、记录，并进入可查询的 thought-state graph。
 
-## 当前目标：Graph-first v0.3
+## 当前状态
 
-v0.3 不只是 LLM Operator scaffold。现在已经补上核心图层，并推进到可运行的专家化 Stage flow：
+当前已经推进到：
+
+```text
+SecondaryMarketAnalyst Stage flow 已可运行
+Web UI 会实时反馈并更新流程图
+Pipeline v0.3 已支持真实 Azure OpenAI 调用（az login）
+```
+
+主流程：
 
 ```text
 User Message
@@ -38,29 +46,13 @@ ThoughtGraph
     tool
 ```
 
-LLM Operators 仍然保留，但它们只是 Operator 的一种实现方式，不是系统主线。
-
 ## 工程原则
 
-第一条：
-
-> 每个 Operator 都消费结构化状态，并返回结构化状态。
-
-第二条：
-
-> Web UI 输入 message 必须走同一个 Stage flow runtime，并实时产出 TraceEvent / GraphSnapshot。
-
-第三条：
-
-> v0.3+ 的主产物是 `ThoughtGraph`，不是 prompt、provider、agent 或 API response。
-
-第四条：
-
-> Operator 是唯一的执行语义。LLM、Agents SDK、tools、rules 都只是 Operator 的实现方式。
-
-第五条：
-
-> Agents SDK 未来只用于实现某些 Operator；GraphController 才是 orchestration engine。
+1. 每个 Operator 都消费结构化状态，并返回结构化状态。
+2. Web UI 输入 message 必须走同一个 Stage flow runtime，并实时产出 TraceEvent / GraphSnapshot。
+3. v0.3+ 的主产物是 `ThoughtGraph`，不是 prompt、provider、agent 或 API response。
+4. Operator 是唯一的执行语义。LLM、Agents SDK、tools、rules 都只是 Operator 的实现方式。
+5. Agents SDK 未来只用于实现某些 Operator；GraphController 才是 orchestration engine。
 
 ## 快速运行
 
@@ -83,6 +75,16 @@ SecondaryMarketAnalyst Stage flow：
 ```bash
 pip install -e .
 python tests/demo_secondary_market_stage_flow.py "请用二级市场分析师视角分析 AAPL 的中期机会和风险。"
+```
+
+Azure OpenAI 真实模型调用，使用 `az login`：
+
+```bash
+az login
+pip install -e '.[azure]'
+export AZURE_OPENAI_ENDPOINT="https://<resource-name>.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT="<deployment-name>"
+python tests/demo_pipeline_v03_azure.py "进入 Pipeline v0.3" --num-branches 1
 ```
 
 Graph-first runtime：
@@ -139,7 +141,21 @@ tsgo.runtime.run_llm_pipeline_graph(
 )
 ```
 
-调用链：
+Azure OpenAI client：
+
+```python
+from tsgo.azure_openai_client import AzureOpenAIResponsesModelClient
+from tsgo.runtime import run_llm_pipeline_message
+
+client = AzureOpenAIResponsesModelClient.from_env()
+trace = run_llm_pipeline_message(
+    "进入 Pipeline v0.3",
+    model_client=client,
+    num_branches=1,
+)
+```
+
+## 调用链
 
 ```text
 tests/demo_secondary_market_stage_flow.py
@@ -158,11 +174,12 @@ Web UI message
   -> SecondaryMarketAnalyst Operators
   -> Trace / TraceEvents / GraphSnapshot
 
-tests/demo_pipeline_v03.py
+tests/demo_pipeline_v03_azure.py
+  -> AzureOpenAIResponsesModelClient.from_env
   -> tsgo.runtime.run_llm_pipeline_message
   -> PipelineController
   -> LLM Operators
-  -> ModelClient / JSON contracts
+  -> Azure OpenAI Responses API
   -> Trace / TraceEvents
   -> ThoughtGraph 可选
 ```
@@ -176,6 +193,7 @@ tests/demo_pipeline_v03.py
 ├── src/
 │   └── tsgo/
 │       ├── __init__.py
+│       ├── azure_openai_client.py
 │       ├── engine.py
 │       ├── events.py
 │       ├── experts/
@@ -195,66 +213,30 @@ tests/demo_pipeline_v03.py
 │       ├── thought_graph.py
 │       ├── trace_store.py
 │       └── web/
-│           ├── __init__.py
-│           ├── app.py
-│           ├── event_bus.py
-│           ├── schemas.py
-│           └── sessions.py
 ├── docs/
-│   ├── architecture.md
+│   ├── azure-openai-az-login.md
 │   ├── event-stream.md
 │   ├── json-contracts.md
-│   ├── pipeline-v0.1.md
-│   ├── pipeline-v0.2.md
 │   ├── pipeline-v0.3.md
 │   ├── stage-instructions-secondary-market-analyst.md
 │   ├── stage-prompts-secondary-market-analyst.md
 │   ├── thought-state-graph-engine.md
-│   ├── web-ui.md
-│   ├── implementation-roadmap.md
-│   ├── prompter-interface.md
-│   ├── stage-index.md
-│   ├── pseudocode/
-│   │   ├── pipeline_v0_1.md
-│   │   └── operators.md
-│   └── stages/
-│       ├── 00_task_intake.md
-│       ├── 01_context_builder.md
-│       ├── 02_rubric_builder.md
-│       ├── 03_problem_decomposer.md
-│       ├── 04_candidate_generator.md
-│       ├── 05_thought_normalizer.md
-│       ├── 06_verifier_scorer.md
-│       ├── 07_improver.md
-│       ├── 08_aggregator.md
-│       ├── 09_final_validator.md
-│       └── 10_trace_logger.md
-├── examples/
-│   └── pipeline_trace_example.json
+│   └── web-ui.md
 ├── tests/
 │   ├── demo_pipeline_v02.py
 │   ├── demo_pipeline_v03.py
+│   ├── demo_pipeline_v03_azure.py
 │   ├── demo_secondary_market_stage_flow.py
-│   ├── test_event_stream.py
-│   ├── test_graph_adapter.py
-│   ├── test_llm_pipeline.py
-│   ├── test_mock_pipeline.py
+│   ├── test_azure_openai_client.py
 │   ├── test_secondary_market_stage_flow.py
-│   ├── test_thought_graph.py
-│   └── test_web_message_equivalence.py
+│   └── test_thought_graph.py
 └── web/
-    ├── index.html
-    ├── package.json
-    ├── tsconfig.json
-    ├── vite.config.ts
     └── src/
         ├── App.tsx
         ├── style.css
-        ├── types.ts
         ├── graph/eventReducer.ts
         └── components/
             ├── ChatPanel.tsx
-            ├── EventTimeline.tsx
             ├── FlowCanvas.tsx
             └── StateInspector.tsx
 ```
@@ -264,9 +246,7 @@ tests/demo_pipeline_v03.py
 建议从这里开始阅读：
 
 - [Thought-State Graph Engine 主线](docs/thought-state-graph-engine.md)
-- [架构说明](docs/architecture.md)
-- [Pipeline v0.1](docs/pipeline-v0.1.md)
-- [Pipeline v0.2](docs/pipeline-v0.2.md)
+- [Azure OpenAI with az login](docs/azure-openai-az-login.md)
 - [Pipeline v0.3](docs/pipeline-v0.3.md)
 - [SecondaryMarketAnalyst Stage Instructions](docs/stage-instructions-secondary-market-analyst.md)
 - [SecondaryMarketAnalyst Stage Prompts](docs/stage-prompts-secondary-market-analyst.md)
@@ -275,12 +255,8 @@ tests/demo_pipeline_v03.py
 - [JSON 契约](docs/json-contracts.md)
 - [阶段索引](docs/stage-index.md)
 - [Prompter 接口映射](docs/prompter-interface.md)
-- [Pipeline 伪代码](docs/pseudocode/pipeline_v0_1.md)
-- [Operator 伪代码](docs/pseudocode/operators.md)
 
 ## 核心抽象
-
-当前实现使用这些核心抽象：
 
 1. `ThoughtState`：一个候选答案、子答案、批评、修订、聚合结果或最终回复。
 2. `Subtask`：问题拆解得到的子任务，也是 graph node。
@@ -290,48 +266,21 @@ tests/demo_pipeline_v03.py
 6. `Operator`：唯一的执行语义；负责把输入状态转换成输出状态。
 7. `GraphRunResult`：一次运行的 `Trace + ThoughtGraph`。
 8. `PipelineController`：当前线性执行策略，后续会被 GraphController 替代或包裹。
-9. `Trace`：记录全部状态、评分、改进和验证结果的可回放轨迹。
-10. `TraceEvent`：Web UI 和测试用于实时观察 pipeline 的事件。
-11. `GraphSnapshot`：将 Trace 映射为前端可渲染的 nodes / edges。
-12. `ModelClient`：v0.3 LLM Operators 内部使用的临时辅助接口，不是 graph engine 主抽象。
-
-## Prompter 接口映射
-
-现有 prompter 抽象可以直接映射到 pipeline 的五类 thought 操作：
-
-| Prompter 方法 | Pipeline 阶段 | 作用 |
-| --- | --- | --- |
-| `generate_prompt(num_branches)` | 04 Candidate Generator | 分支扩展 |
-| `score_prompt(state_dicts)` | 06 Verifier / Scorer | 多状态评估 |
-| `improve_prompt()` | 07 Improver | 基于 critique 的修复 |
-| `aggregation_prompt(state_dicts)` | 08 Aggregator | claim 级综合 |
-| `validation_prompt()` | 09 Final Validator | 发布门禁 |
-
-Prompter 继续保留为兼容层，但主线是 `ThoughtGraph -> GraphController -> Operator`。
+9. `TraceEvent`：Web UI 和测试用于实时观察 pipeline 的事件。
+10. `GraphSnapshot`：将 Trace 映射为前端可渲染的 nodes / edges。
+11. `ModelClient`：LLM Operators 内部使用的临时辅助接口，不是 graph engine 主抽象。
 
 ## 开发状态
 
-当前状态：**SecondaryMarketAnalyst Stage flow 已可运行，Web UI 会实时反馈并更新流程图**。
-
 已经完成：
 
-- v0.2 Web UI + event stream + trace graph
-- `TraceEvent` 事件流
-- `Trace -> GraphSnapshot` 转换
-- 左到右语义流程图布局
-- JSONL / JSON trace sinks
-- `tests/demo_pipeline_v02.py` demo adapter
-- `tests/demo_pipeline_v03.py` scripted LLM demo adapter
-- `tests/demo_secondary_market_stage_flow.py` stage-flow demo adapter
-- `json_contracts.py` 结构化 JSON parser
-- `llm_operators.py` LLM Operators
-- `experts/secondary_market.py` 可运行的 10-stage Operators
-- `ThoughtGraph` / `ThoughtEdge` / `ThoughtStateGraphEngine`
-- `run_pipeline_graph()` / `run_llm_pipeline_graph()` / `run_secondary_market_graph()`
-- `tests/test_thought_graph.py`
-- `tests/test_secondary_market_stage_flow.py`
-- SecondaryMarketAnalyst 专家化 Stage instructions
-- SecondaryMarketAnalyst 专家化 Stage prompt templates
+- SecondaryMarketAnalyst 10-stage flow
+- Web UI 实时流程图
+- `Trace -> GraphSnapshot`
+- `Trace -> ThoughtGraph`
+- `AzureOpenAIResponsesModelClient`，支持 `az login`
+- `tests/demo_pipeline_v03_azure.py`
+- `tests/test_azure_openai_client.py`
 - diversity-aware aggregation
 
 尚未完成：
@@ -341,7 +290,7 @@ Prompter 继续保留为兼容层，但主线是 `ThoughtGraph -> GraphControlle
 - graph search policy
 - Web UI final lineage / full graph 切换
 - 使用 Agents SDK 实现部分 Operator
-- OpenAI / Azure OpenAI / DeepSeek 最小模型接入
+- DeepSeek / Azure OpenAI structured-only Operator 收敛
 - 最小 verifier tools
 
 ## 下一阶段
