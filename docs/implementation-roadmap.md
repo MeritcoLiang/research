@@ -7,12 +7,13 @@
 硬约束：
 
 1. **ThoughtGraph 优先**：系统主产物是 `ThoughtGraph`，不是 provider abstraction，也不是 agent runtime。
-2. **Agents SDK 是执行后端**：如果 OpenAI Agents SDK 能满足 operator 执行需求，就使用它；但它不替代 GraphController。
+2. **Operator 是唯一执行语义**：LLM、Agents SDK、tools、rules 都只是 Operator 的实现方式。
 3. **Structured output 强制**：能用 `output_type` / structured output，就不保留 prompt JSON fallback。
 4. **模型范围收窄**：LLM 只兼容 OpenAI、Azure OpenAI、DeepSeek。
 5. **不做通用 provider router**：不接入 Anthropic、Gemini、LiteLLM、Any-LLM、Ollama、vLLM、OpenRouter 等泛化适配。
 6. **不做多套并行路径**：同一阶段只保留一条主路径，除非真实运行验证证明必须拆分。
-7. **Prompter 降级为兼容层**：主路径使用 ThoughtGraph、structured schema、operator backend 和最小工具。
+7. **Prompter 降级为兼容层**：主路径使用 ThoughtGraph、structured schema、Operator 和最小工具。
+8. **不引入 backend 语义层**：不创建 `OperatorBackend`、`AgentBackend`、`ModelBackend`、`ExecutionBackend` 这类抽象。
 
 ## v0.1：设计脚手架
 
@@ -49,21 +50,21 @@
 10. 增加 React + React Flow frontend 骨架。
 11. 添加 mock pipeline、event stream、graph adapter、Web message equivalence 测试。
 
-## v0.3：LLM-backed operators + ThoughtGraph core
+## v0.3：LLM Operators + ThoughtGraph core
 
 状态：已完成 scaffold，并已修正主线。
 
 目标：
 
 ```text
-用 LLM-backed operators 替换 mock operators 的内部实现；
+用 LLM Operators 替换 mock operators 的内部实现；
 同时把 Trace 提升为 canonical ThoughtGraph。
 ```
 
 已完成：
 
 1. 增加 `json_contracts.py`，用于解析 LLM JSON 输出。
-2. 增加 `llm_operators.py`，包含 LLM-backed Generate / Normalize / Score / Improve / Aggregate / Validate。
+2. 增加 `llm_operators.py`，包含使用 LLM 实现的 Generate / Normalize / Score / Improve / Aggregate / Validate Operators。
 3. 增加 `ScriptedModelClient` 和 `CallbackModelClient`，用于无 API key 的回归测试。
 4. 增加 `build_v03_controller()` 和 `run_llm_pipeline_message()`。
 5. 增加 `tests/demo_pipeline_v03.py`。
@@ -105,11 +106,12 @@ Graph replay
 Web UI final lineage / full graph toggle
 ```
 
-只在 operator 需要真实模型执行时接入 Agents SDK structured output。Agents SDK 是 operator backend，不是 orchestration engine。
+只在某个 Operator 需要真实模型执行时，在该 Operator 内使用 Agents SDK structured output。Agents SDK 不形成新语义层，也不替代 GraphController。
 
 不做：
 
 ```text
+OperatorBackend / AgentBackend / ModelBackend / ExecutionBackend
 providers/base.py
 MultiProvider
 LiteLLMProvider
@@ -118,9 +120,9 @@ LocalHTTPProvider
 通用 provider capability matrix
 ```
 
-## v0.5：Agents SDK structured backend
+## v0.5：Agents SDK Operator 实现
 
-目标：为 GraphController 的 operator 执行接入最小 Agents SDK backend。
+目标：使用 OpenAI Agents SDK 实现部分 Operator。
 
 只实现：
 
@@ -136,7 +138,7 @@ src/tsgo/agents/model_config.py
 ```text
 GraphController
   -> Operator
-  -> Agent / Runner / output_type
+  -> Operator 内部使用 Agent / Runner / output_type
   -> ThoughtState
   -> ThoughtGraph
 ```
@@ -147,9 +149,9 @@ GraphController
 
 实现顺序：
 
-1. `OpenAIAgentBackend`：默认路径，使用 Agents SDK 原生 OpenAI model。
-2. `AzureOpenAIAgentBackend`：只在 Agents SDK 的内置 provider / OpenAI-compatible client 能满足时实现。
-3. `DeepSeekAgentBackend`：仅作为 OpenAI-compatible endpoint 接入；如果 structured output 不稳定，就不进入主路径。
+1. `OpenAIAgentOperator`：默认路径，使用 Agents SDK 原生 OpenAI model 实现 Operator。
+2. `AzureOpenAIAgentOperator`：只在 Agents SDK 的内置 provider / OpenAI-compatible client 能满足时实现。
+3. `DeepSeekAgentOperator`：仅作为 OpenAI-compatible endpoint 支撑 Operator；如果 structured output 不稳定，就不进入主路径。
 
 不接入其他模型。
 
@@ -157,7 +159,7 @@ GraphController
 
 目标：删除 prompt JSON fallback，把所有 v0.3 JSON parser 降级为测试兼容层。
 
-每个 operator 必须有 Pydantic output schema：
+每个 Operator 必须有 Pydantic output schema：
 
 ```text
 GenerateOutput
@@ -168,10 +170,10 @@ AggregateOutput
 ValidateOutput
 ```
 
-如果某个后端不支持 structured output：
+如果某个模型实现不支持 structured output：
 
 ```text
-该后端不支持这个阶段。
+该模型不能用于这个 Operator。
 ```
 
 不再做：
@@ -182,7 +184,7 @@ ValidateOutput
 
 ## v0.8：最小工具系统
 
-目标：只把 verifier 必需工具接入 Agents SDK function tools。
+目标：只把 verifier 必需工具接入相关 Operator。
 
 第一批工具只做：
 
