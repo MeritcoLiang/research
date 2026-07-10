@@ -25,6 +25,20 @@ export type GraphSnapshot = {
   edges?: Record<string, unknown>[];
 };
 
+export type HistoryTraceItem = {
+  history_id: string;
+  session_id: string | null;
+  llm_provider: string | null;
+  trace_id: string;
+  final_state_id: string | null;
+  final_status: string | null;
+  state_count: number;
+  event_count: number;
+  user_query_preview: string | null;
+  final_draft_preview: string | null;
+  modified_time: number;
+};
+
 export type ServerMessage =
   | { type: "client_reset" }
   | { type: "client_graph_snapshot"; graph: GraphSnapshot }
