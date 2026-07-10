@@ -14,7 +14,7 @@ deepseek       # SecondaryMarketAnalyst Stage flow + DeepSeek 实现 LLM Operato
 
 流程图的用户可见标签必须语义化，不展示内部 `state_id`。`state_id` 只作为 React Flow 的内部 key 和调试 metadata 使用。
 
-主流程采用**从左到右**的层级展开，因为完整分支较多，横向布局比自上而下更舒展：
+主流程采用**从左到右**的层级展开，并采用紧凑列距，避免完整分支展开后过度松散：
 
 ```text
 root -> expert SecondaryMarketAnalyst -> subtask s1/s2/... -> candidates -> normalized -> scored -> aggregation -> validation
@@ -72,25 +72,72 @@ deepseek     -> DeepSeekOpenAIChatModelClient.from_env() + run_secondary_market_
 
 注意：LLM 选择只是选择 Operator 的实现方式，不引入新的执行语义层。
 
-## 布局规则
+## 紧凑流程图布局
 
 前端 `web/src/graph/eventReducer.ts` 使用语义布局常量：
 
 ```text
 root:        x = 0
-expert:      x = 260
-subtask:     x = 540
-candidate:   x = 880
-normalized:  x = 1220
-scored:      x = 1560
-improved:    x = 1900
-aggregation: x = 2240
-validation:  x = 2540
+expert:      x = 180
+subtask:     x = 380
+candidate:   x = 620
+normalized:  x = 850
+scored:      x = 1080
+improved:    x = 1310
+aggregation: x = 1540
+validation:  x = 1760
 ```
 
-每个 subtask 占一个纵向分组，每个 candidate 分支在该 subtask 分组内向下展开。normalized / scored / validation 节点优先跟随 parent 的 y 坐标，因此一条分支在视觉上形成横向链路。
+纵向布局：
+
+```text
+ROOT_Y       = 360
+GROUP_TOP    = 40
+SUBTASK_GAP  = 250
+BRANCH_GAP   = 44
+```
+
+节点 label 会压缩为更短的可读标签，例如：
+
+```text
+SecondaryMarketAnalyst -> Secondary\nMarket
+candidate              -> cand
+normalized             -> norm
+aggregation            -> agg
+validation             -> valid
+```
+
+节点宽度按 stage 限制，避免默认节点过宽造成图面松散。
 
 刷新页面后，前端会从 `localStorage` 恢复最新 graph snapshot；一次 pipeline 完成时，后端返回完整 graph snapshot，前端用 snapshot hydrate 全图，避免仅依赖增量事件造成 root、expert 或 subtask 丢失。
+
+## 节点详情 Inspector
+
+`StateInspector` 不再默认把 metadata 整块 JSON 贴出来。新的详情面板按用户阅读顺序分区：
+
+```text
+概览
+输入
+输出
+专家选择
+Subtask
+验证结果
+模型调用
+其他元信息
+调试：原始 metadata
+```
+
+其中：
+
+- `输入` 展示父节点、subtask、分支、prompt id；
+- `输出` 展示摘要、claim 数、critique 数、聚合选中的 subtasks / branches；
+- `专家选择` 展示 selected expert、标的、周期、意图、缺失信息；
+- `Subtask` 展示 required outputs、dependencies、evidence needed；
+- `验证结果` 展示 pass、confidence、blocking issues、required edits、warnings；
+- `模型调用` 展示 prompt preview 与 raw model preview；
+- `调试：原始 metadata` 仍保留，但折叠到最后，仅用于排查问题。
+
+这样可以把输入/输出/评分/验证信息分开阅读，避免直接阅读大段 JSON。
 
 ## 页面高度与滚动
 
@@ -99,8 +146,8 @@ validation:  x = 2540
 FlowCanvas 的高度跟随流程图内容动态计算：
 
 ```text
-canvas_height = max(720, max_node_y + 280)
-canvas_width  = max(1280, max_node_x + 420)
+canvas_height = max(560, max_node_y + 180)
+canvas_width  = max(980, max_node_x + 260)
 ```
 
 纵向空间由浏览器页面滚动条承载，避免在流程图内部再出现局部纵向滚动；横向展开较长时，FlowCanvas 区域保留横向滚动条。
