@@ -25,7 +25,7 @@ header {
 
 .layout {
   display: grid;
-  grid-template-columns: 320px minmax(720px, 1fr) 360px;
+  grid-template-columns: 320px minmax(680px, 1fr) 420px;
   gap: 12px;
   align-items: start;
 }
@@ -85,13 +85,129 @@ header {
   width: 100%;
   overflow-x: auto;
   overflow-y: visible;
-  padding-bottom: 16px;
+  padding-bottom: 12px;
 }
 
 .flow-canvas {
   border: 1px solid #eef1f7;
   border-radius: 10px;
   background: #fcfdff;
+}
+
+.react-flow__node.compact-flow-node {
+  min-height: 34px;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.18;
+  border-radius: 8px;
+}
+
+.react-flow__handle {
+  width: 6px;
+  height: 6px;
+}
+
+.inspector-panel {
+  font-size: 13px;
+}
+
+.inspector-panel h2 {
+  margin-bottom: 10px;
+}
+
+.detail-section {
+  border-top: 1px solid #edf0f5;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.detail-section h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.node-title {
+  font-weight: 700;
+  white-space: pre-wrap;
+  margin-bottom: 8px;
+}
+
+.kv-grid {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.kv-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.kv-grid.compact .kv-row {
+  grid-template-columns: 118px minmax(0, 1fr);
+}
+
+.kv-row dt {
+  color: #667085;
+  font-weight: 600;
+}
+
+.kv-row dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.text-block {
+  margin-bottom: 8px;
+}
+
+.text-block-title {
+  color: #667085;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.text-block p {
+  margin: 0;
+  padding: 8px;
+  background: #f7f8fb;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pill {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #eef2ff;
+  overflow-wrap: anywhere;
+}
+
+.pill.muted {
+  background: #f0f2f5;
+  color: #667085;
+}
+
+.empty-hint {
+  color: #667085;
+  margin: 0;
+}
+
+.raw-metadata {
+  margin-top: 12px;
+  border-top: 1px solid #edf0f5;
+  padding-top: 10px;
 }
 
 .inspector-panel pre,
