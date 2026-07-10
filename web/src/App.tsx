@@ -4,7 +4,7 @@ import { ChatPanel, type LLMProvider } from './components/ChatPanel';
 import { FlowCanvas } from './components/FlowCanvas';
 import { StateInspector } from './components/StateInspector';
 import { initialGraphState, reduceServerMessage } from './graph/eventReducer';
-import type { GraphNodeData, GraphSnapshot, ServerMessage } from './types';
+import type { GraphNodeData, GraphSnapshot, HistoryTraceItem, ServerMessage } from './types';
 import './style.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -24,6 +24,7 @@ export default function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [finalPreview, setFinalPreview] = useState<string | null>(null);
+  const [histories, setHistories] = useState<HistoryTraceItem[]>([]);
 
   useEffect(() => {
     const cachedSessionId = window.localStorage.getItem(SESSION_KEY);
@@ -52,6 +53,8 @@ export default function App() {
         window.localStorage.removeItem(SUMMARY_KEY);
       }
     }
+
+    refreshHistory();
   }, []);
 
   function createSession() {
@@ -62,6 +65,33 @@ export default function App() {
         window.localStorage.setItem(SESSION_KEY, payload.session_id);
       })
       .catch((error) => setFinalPreview(`创建 session 失败：${String(error)}`));
+  }
+
+  function refreshHistory() {
+    fetch(`${API_BASE}/api/history`)
+      .then((response) => response.json())
+      .then((payload) => setHistories(Array.isArray(payload.items) ? payload.items : []))
+      .catch((error) => setFinalPreview(`加载历史列表失败：${String(error)}`));
+  }
+
+  function loadHistory(historyId: string) {
+    setRunning(true);
+    setSelectedNodeId(null);
+    fetch(`${API_BASE}/api/history/${encodeURIComponent(historyId)}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        const graph = payload.graph as GraphSnapshot;
+        const summary = payload.summary as HistoryTraceItem;
+        dispatchGraph({ type: 'client_graph_snapshot', graph });
+        setFinalPreview(summary.final_draft_preview ?? '历史 trace 已加载。');
+        window.localStorage.setItem(GRAPH_KEY, JSON.stringify(graph));
+        window.localStorage.setItem(SUMMARY_KEY, JSON.stringify({ final_draft_preview: summary.final_draft_preview }));
+      })
+      .catch((error) => setFinalPreview(`加载历史 trace 失败：${String(error)}`))
+      .finally(() => setRunning(false));
   }
 
   const selectedNode = useMemo(
@@ -103,6 +133,7 @@ export default function App() {
         window.localStorage.setItem(SUMMARY_KEY, JSON.stringify(summary));
         setRunning(false);
         socket.close();
+        refreshHistory();
       }
       if (payload.type === 'error') {
         setFinalPreview(payload.message);
@@ -131,7 +162,14 @@ export default function App() {
         </p>
       </header>
       <div className="layout">
-        <ChatPanel disabled={running || !sessionId} onSend={sendMessage} finalPreview={finalPreview} />
+        <ChatPanel
+          disabled={running || !sessionId}
+          onSend={sendMessage}
+          finalPreview={finalPreview}
+          histories={histories}
+          onLoadHistory={loadHistory}
+          onRefreshHistory={refreshHistory}
+        />
         <FlowCanvas nodes={graphState.nodes} edges={graphState.edges} onSelectNode={setSelectedNodeId} />
         <StateInspector node={selectedNode} />
       </div>
