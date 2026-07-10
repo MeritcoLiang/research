@@ -8,10 +8,10 @@ type Props = {
   onSelectNode: (nodeId: string | null) => void;
 };
 
-const MIN_CANVAS_HEIGHT = 720;
-const MIN_CANVAS_WIDTH = 1280;
-const NODE_MARGIN_X = 420;
-const NODE_MARGIN_Y = 280;
+const MIN_CANVAS_HEIGHT = 560;
+const MIN_CANVAS_WIDTH = 980;
+const NODE_MARGIN_X = 260;
+const NODE_MARGIN_Y = 180;
 
 export function FlowCanvas({ nodes, edges, onSelectNode }: Props) {
   const canvasSize = computeCanvasSize(nodes);
@@ -40,7 +40,7 @@ export function FlowCanvas({ nodes, edges, onSelectNode }: Props) {
             preventScrolling={false}
             onSelectionChange={handleSelectionChange}
           >
-            <Background />
+            <Background gap={18} size={0.8} />
             <Controls />
           </ReactFlow>
         </div>
