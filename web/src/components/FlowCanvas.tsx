@@ -8,10 +8,10 @@ type Props = {
   onSelectNode: (nodeId: string | null) => void;
 };
 
-const MIN_CANVAS_HEIGHT = 560;
-const MIN_CANVAS_WIDTH = 980;
-const NODE_MARGIN_X = 260;
-const NODE_MARGIN_Y = 180;
+const MIN_CANVAS_HEIGHT = 460;
+const MIN_CANVAS_WIDTH = 900;
+const NODE_MARGIN_X = 180;
+const NODE_MARGIN_Y = 120;
 
 export function FlowCanvas({ nodes, edges, onSelectNode }: Props) {
   const canvasSize = computeCanvasSize(nodes);
