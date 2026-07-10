@@ -12,7 +12,14 @@ except ImportError as exc:  # pragma: no cover - only hit when web extras are mi
 from ..graph import event_to_graph_delta, trace_to_graph
 from ..schema import Trace
 from .event_bus import AsyncQueueEventSink
-from .schemas import CreateSessionResponse, GraphResponse, TraceSummaryResponse, UserMessageRequest
+from .schemas import (
+    CreateSessionResponse,
+    GraphResponse,
+    HistoryGraphResponse,
+    HistoryListResponse,
+    TraceSummaryResponse,
+    UserMessageRequest,
+)
 from .sessions import SessionManager
 
 
@@ -51,6 +58,20 @@ def get_trace_graph(session_id: str, trace_id: str) -> GraphResponse:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return GraphResponse(**graph)
+
+
+@app.get("/api/history", response_model=HistoryListResponse)
+def list_history() -> HistoryListResponse:
+    return HistoryListResponse(items=manager.list_history())
+
+
+@app.get("/api/history/{history_id}", response_model=HistoryGraphResponse)
+def load_history_graph(history_id: str) -> HistoryGraphResponse:
+    try:
+        payload = manager.history_graph(history_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return HistoryGraphResponse(summary=payload["summary"], graph=GraphResponse(**payload["graph"]))
 
 
 @app.websocket("/ws/sessions/{session_id}")
