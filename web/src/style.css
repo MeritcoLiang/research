@@ -25,7 +25,7 @@ header {
 
 .layout {
   display: grid;
-  grid-template-columns: 320px minmax(680px, 1fr) 420px;
+  grid-template-columns: 300px minmax(620px, 1fr) 420px;
   gap: 12px;
   align-items: start;
 }
@@ -67,6 +67,22 @@ header {
   cursor: pointer;
 }
 
+.history-box {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f5;
+}
+
+.history-box h3 {
+  margin: 0 0 8px;
+}
+
+.history-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .chat-panel,
 .inspector-panel {
   position: sticky;
@@ -85,7 +101,7 @@ header {
   width: 100%;
   overflow-x: auto;
   overflow-y: visible;
-  padding-bottom: 12px;
+  padding-bottom: 10px;
 }
 
 .flow-canvas {
@@ -95,16 +111,16 @@ header {
 }
 
 .react-flow__node.compact-flow-node {
-  min-height: 34px;
-  padding: 5px 7px;
-  font-size: 11px;
-  line-height: 1.18;
-  border-radius: 8px;
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 10.5px;
+  line-height: 1.12;
+  border-radius: 7px;
 }
 
 .react-flow__handle {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 .inspector-panel {
