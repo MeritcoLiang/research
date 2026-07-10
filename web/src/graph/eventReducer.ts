@@ -19,20 +19,20 @@ export const initialGraphState: GraphState = {
 
 const X = {
   root: 0,
-  expert: 260,
-  subtask: 540,
-  candidate: 880,
-  normalized: 1220,
-  scored: 1560,
-  improved: 1900,
-  aggregation: 2240,
-  validation: 2540,
+  expert: 180,
+  subtask: 380,
+  candidate: 620,
+  normalized: 850,
+  scored: 1080,
+  improved: 1310,
+  aggregation: 1540,
+  validation: 1760,
 };
 
-const ROOT_Y = 620;
-const GROUP_TOP = 80;
-const SUBTASK_GAP = 360;
-const BRANCH_GAP = 80;
+const ROOT_Y = 360;
+const GROUP_TOP = 40;
+const SUBTASK_GAP = 250;
+const BRANCH_GAP = 44;
 
 export function reduceServerMessage(state: GraphState, message: ServerMessage): GraphState {
   if (message.type === 'client_reset') {
@@ -118,14 +118,16 @@ function hydrateGraphSnapshot(state: GraphState, snapshot: GraphSnapshot, runSta
 }
 
 function graphNodeFromRaw(raw: Record<string, unknown>, existingNodes: Node<GraphNodeData>[]): Node<GraphNodeData> {
+  const stage = String(raw.stage ?? '');
   return {
     id: String(raw.id),
     position: semanticLayoutPosition(raw, existingNodes),
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
+    className: `compact-flow-node stage-${stage.replaceAll('_', '-')}`,
     data: {
-      label: String(raw.label ?? raw.id),
-      stage: String(raw.stage ?? ''),
+      label: compactLabel(String(raw.label ?? raw.id)),
+      stage,
       status: typeof raw.status === 'string' ? raw.status : undefined,
       score: typeof raw.score === 'number' ? raw.score : null,
       summary: typeof raw.summary === 'string' ? raw.summary : null,
@@ -140,8 +142,8 @@ function graphEdgeFromRaw(raw: Record<string, unknown>): Edge {
     source: String(raw.source),
     target: String(raw.target),
     type: 'default',
-    markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-    style: { strokeWidth: 1.4 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+    style: { strokeWidth: 1.2 },
     data: { edgeType: raw.edge_type ? String(raw.edge_type) : 'parent' },
   };
 }
@@ -171,7 +173,7 @@ function semanticLayoutPosition(raw: Record<string, unknown>, nodes: Node<GraphN
 
   if (status === 'subtask' || stage === 'problem_decomposer') {
     const idx = subtaskIndex(String(raw.id));
-    return { x: X.subtask, y: GROUP_TOP + idx * SUBTASK_GAP + BRANCH_GAP * 1.5 };
+    return { x: X.subtask, y: GROUP_TOP + idx * SUBTASK_GAP + BRANCH_GAP };
   }
 
   if (stage === 'candidate_generator') {
@@ -203,7 +205,7 @@ function semanticLayoutPosition(raw: Record<string, unknown>, nodes: Node<GraphN
     return alignWithParentOrStack(raw, nodes, X.validation, ROOT_Y);
   }
 
-  return { x: X.candidate, y: GROUP_TOP + nodes.length * 40 };
+  return { x: X.candidate, y: GROUP_TOP + nodes.length * 32 };
 }
 
 function alignWithParentOrStack(raw: Record<string, unknown>, nodes: Node<GraphNodeData>[], x: number, fallbackY: number) {
@@ -211,7 +213,7 @@ function alignWithParentOrStack(raw: Record<string, unknown>, nodes: Node<GraphN
   const parentIds = Array.isArray(metadata.parent_ids) ? metadata.parent_ids.map(String) : [];
   const parent = nodes.find((node) => parentIds.includes(node.id));
   if (parent) return { x, y: parent.position.y };
-  return { x, y: fallbackY + nodes.length * 40 };
+  return { x, y: fallbackY + nodes.length * 32 };
 }
 
 function averageY(nodes: Node<GraphNodeData>[], stage: string) {
@@ -224,6 +226,17 @@ function subtaskIndex(id: string) {
   const match = id.match(/s(\d+)/);
   if (!match) return 0;
   return Number(match[1]) - 1;
+}
+
+function compactLabel(label: string) {
+  return label
+    .replace('SecondaryMarketAnalyst', 'Secondary\nMarket')
+    .replace('technical flow', 'technical')
+    .replace('catalyst driven', 'catalyst')
+    .replace('risk first', 'risk')
+    .replace('direct expert', 'direct')
+    .replace('counterfactual', 'counter')
+    .replace('first principles', 'principles');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
