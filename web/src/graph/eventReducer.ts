@@ -124,7 +124,8 @@ function graphNodeFromRaw(raw: Record<string, unknown>, existingNodes: Node<Grap
     position: semanticLayoutPosition(raw, existingNodes),
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
-    className: `compact-flow-node stage-${stage.replaceAll('_', '-')}`,
+    className: `compact-flow-node stage-${stage.replaceAll('_', '-') || 'unknown'}`,
+    style: { width: compactNodeWidth(stage) },
     data: {
       label: compactLabel(String(raw.label ?? raw.id)),
       stage,
@@ -228,9 +229,21 @@ function subtaskIndex(id: string) {
   return Number(match[1]) - 1;
 }
 
+function compactNodeWidth(stage: string) {
+  if (stage === 'root') return 92;
+  if (stage === 'expert_router') return 124;
+  if (stage === 'candidate_generator') return 134;
+  if (stage === 'aggregator' || stage === 'final_validator') return 116;
+  return 104;
+}
+
 function compactLabel(label: string) {
   return label
     .replace('SecondaryMarketAnalyst', 'Secondary\nMarket')
+    .replace('candidate\n', 'cand\n')
+    .replace('normalized', 'norm')
+    .replace('aggregation', 'agg')
+    .replace('validation', 'valid')
     .replace('technical flow', 'technical')
     .replace('catalyst driven', 'catalyst')
     .replace('risk first', 'risk')
