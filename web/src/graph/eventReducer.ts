@@ -19,20 +19,33 @@ export const initialGraphState: GraphState = {
 
 const X = {
   root: 0,
-  expert: 180,
-  subtask: 380,
-  candidate: 620,
-  normalized: 850,
-  scored: 1080,
-  improved: 1310,
-  aggregation: 1540,
-  validation: 1760,
+  expert: 150,
+  subtask: 320,
+  candidate: 520,
+  normalized: 720,
+  scored: 920,
+  improved: 1120,
+  aggregation: 1320,
+  validation: 1500,
 };
 
-const ROOT_Y = 360;
-const GROUP_TOP = 40;
-const SUBTASK_GAP = 250;
-const BRANCH_GAP = 44;
+const ROOT_Y = 260;
+const GROUP_TOP = 28;
+const BRANCH_GAP = 32;
+const MIN_GROUP_HEIGHT = 88;
+const GROUP_PADDING_Y = 56;
+
+const STAGE_ORDER: Record<string, number> = {
+  root: 0,
+  expert_router: 1,
+  problem_decomposer: 2,
+  candidate_generator: 3,
+  thought_normalizer: 4,
+  verifier_scorer: 5,
+  improver: 6,
+  aggregator: 7,
+  final_validator: 8,
+};
 
 export function reduceServerMessage(state: GraphState, message: ServerMessage): GraphState {
   if (message.type === 'client_reset') {
@@ -59,10 +72,10 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
   }
 
   if (message.type === 'graph_node_upsert') {
-    const node = graphNodeFromRaw(message.node, state.nodes);
+    const node = graphNodeFromRaw(message.node);
     return {
       ...state,
-      nodes: upsertNode(state.nodes, node),
+      nodes: recomputeGraphLayout(upsertNode(state.nodes, node)),
     };
   }
 
@@ -77,10 +90,12 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
   if (message.type === 'graph_node_patch') {
     return {
       ...state,
-      nodes: state.nodes.map((node) =>
-        node.id === message.node_id
-          ? { ...node, data: { ...node.data, ...(message.patch as Partial<GraphNodeData>) } }
-          : node,
+      nodes: recomputeGraphLayout(
+        state.nodes.map((node) =>
+          node.id === message.node_id
+            ? { ...node, data: { ...node.data, ...(message.patch as Partial<GraphNodeData>) } }
+            : node,
+        ),
       ),
     };
   }
@@ -101,10 +116,7 @@ export function reduceServerMessage(state: GraphState, message: ServerMessage): 
 
 function hydrateGraphSnapshot(state: GraphState, snapshot: GraphSnapshot, runStatus: string): GraphState {
   const rawNodes = Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
-  const nodes: Node<GraphNodeData>[] = [];
-  for (const raw of rawNodes) {
-    nodes.push(graphNodeFromRaw(raw, nodes));
-  }
+  const nodes = recomputeGraphLayout(rawNodes.map(graphNodeFromRaw));
 
   const rawEdges = Array.isArray(snapshot.edges) ? snapshot.edges : [];
   const edges = rawEdges.map(graphEdgeFromRaw);
@@ -117,11 +129,11 @@ function hydrateGraphSnapshot(state: GraphState, snapshot: GraphSnapshot, runSta
   };
 }
 
-function graphNodeFromRaw(raw: Record<string, unknown>, existingNodes: Node<GraphNodeData>[]): Node<GraphNodeData> {
+function graphNodeFromRaw(raw: Record<string, unknown>): Node<GraphNodeData> {
   const stage = String(raw.stage ?? '');
   return {
     id: String(raw.id),
-    position: semanticLayoutPosition(raw, existingNodes),
+    position: { x: 0, y: 0 },
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
     className: `compact-flow-node stage-${stage.replaceAll('_', '-') || 'unknown'}`,
@@ -152,7 +164,7 @@ function graphEdgeFromRaw(raw: Record<string, unknown>): Edge {
 function upsertNode(nodes: Node<GraphNodeData>[], next: Node<GraphNodeData>): Node<GraphNodeData>[] {
   const exists = nodes.some((node) => node.id === next.id);
   if (!exists) return [...nodes, next];
-  return nodes.map((node) => (node.id === next.id ? { ...node, ...next, position: node.position } : node));
+  return nodes.map((node) => (node.id === next.id ? { ...node, ...next } : node));
 }
 
 function upsertEdge(edges: Edge[], next: Edge): Edge[] {
@@ -161,66 +173,120 @@ function upsertEdge(edges: Edge[], next: Edge): Edge[] {
   return edges.map((edge) => (edge.id === next.id ? { ...edge, ...next } : edge));
 }
 
-function semanticLayoutPosition(raw: Record<string, unknown>, nodes: Node<GraphNodeData>[]) {
-  const stage = String(raw.stage ?? '');
-  const status = String(raw.status ?? '');
-  const metadata = isRecord(raw.metadata) ? raw.metadata : {};
+function recomputeGraphLayout(nodes: Node<GraphNodeData>[]): Node<GraphNodeData>[] {
+  if (!nodes.length) return nodes;
 
-  if (stage === 'root') return { x: X.root, y: ROOT_Y };
+  const subtaskIds = discoverSubtaskIds(nodes);
+  const groupMetrics = computeGroupMetrics(nodes, subtaskIds);
+  const centerY = computeGraphCenterY(groupMetrics);
+  const positionById = new Map<string, { x: number; y: number }>();
 
-  if (stage === 'expert_router') {
-    return { x: X.expert, y: ROOT_Y };
+  const ordered = [...nodes].sort((a, b) => {
+    const aStage = a.data.stage ?? '';
+    const bStage = b.data.stage ?? '';
+    return (STAGE_ORDER[aStage] ?? 99) - (STAGE_ORDER[bStage] ?? 99) || a.id.localeCompare(b.id);
+  });
+
+  for (const node of ordered) {
+    const stage = node.data.stage ?? '';
+    const status = node.data.status ?? '';
+    const metadata = isRecord(node.data.metadata) ? node.data.metadata : {};
+    let position = { x: X.candidate, y: GROUP_TOP + positionById.size * 28 };
+
+    if (stage === 'root') {
+      position = { x: X.root, y: centerY };
+    } else if (stage === 'expert_router') {
+      position = { x: X.expert, y: centerY };
+    } else if (status === 'subtask' || stage === 'problem_decomposer') {
+      const metrics = groupMetrics.get(node.id) ?? groupMetrics.get(subtaskIds[0]);
+      position = { x: X.subtask, y: metrics ? metrics.subtaskY : centerY };
+    } else if (stage === 'candidate_generator') {
+      const subtask = String(metadata.subtask_id ?? subtaskIds[0] ?? 's1');
+      const branch = Number(metadata.branch_index ?? 0);
+      const metrics = groupMetrics.get(subtask) ?? groupMetrics.get(subtaskIds[0]);
+      position = {
+        x: X.candidate,
+        y: (metrics?.top ?? GROUP_TOP) + branch * BRANCH_GAP,
+      };
+    } else if (stage === 'thought_normalizer') {
+      position = alignWithParent(metadata, positionById, X.normalized, centerY);
+    } else if (stage === 'verifier_scorer') {
+      position = alignWithParent(metadata, positionById, X.scored, centerY);
+    } else if (stage === 'improver') {
+      position = alignWithParent(metadata, positionById, X.improved, centerY);
+    } else if (stage === 'aggregator') {
+      position = { x: X.aggregation, y: averagePositionY(positionById, nodes, 'verifier_scorer') ?? centerY };
+    } else if (stage === 'final_validator') {
+      position = alignWithParent(metadata, positionById, X.validation, centerY);
+    }
+
+    positionById.set(node.id, position);
   }
 
-  if (status === 'subtask' || stage === 'problem_decomposer') {
-    const idx = subtaskIndex(String(raw.id));
-    return { x: X.subtask, y: GROUP_TOP + idx * SUBTASK_GAP + BRANCH_GAP };
-  }
+  return nodes.map((node) => ({ ...node, position: positionById.get(node.id) ?? node.position }));
+}
 
-  if (stage === 'candidate_generator') {
-    const subtask = String(metadata.subtask_id ?? 's1');
+function discoverSubtaskIds(nodes: Node<GraphNodeData>[]) {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.data.status === 'subtask' || node.data.stage === 'problem_decomposer') ids.add(node.id);
+    const metadata = isRecord(node.data.metadata) ? node.data.metadata : {};
+    if (typeof metadata.subtask_id === 'string') ids.add(metadata.subtask_id);
+  }
+  return [...ids].sort((a, b) => subtaskIndex(a) - subtaskIndex(b) || a.localeCompare(b));
+}
+
+function computeGroupMetrics(nodes: Node<GraphNodeData>[], subtaskIds: string[]) {
+  const metrics = new Map<string, { top: number; height: number; subtaskY: number }>();
+  const branchCounts = new Map<string, number>();
+  for (const id of subtaskIds) branchCounts.set(id, 1);
+
+  for (const node of nodes) {
+    if (node.data.stage !== 'candidate_generator') continue;
+    const metadata = isRecord(node.data.metadata) ? node.data.metadata : {};
+    const subtask = String(metadata.subtask_id ?? subtaskIds[0] ?? 's1');
     const branch = Number(metadata.branch_index ?? 0);
-    return {
-      x: X.candidate,
-      y: GROUP_TOP + subtaskIndex(subtask) * SUBTASK_GAP + branch * BRANCH_GAP,
-    };
+    branchCounts.set(subtask, Math.max(branchCounts.get(subtask) ?? 1, branch + 1));
   }
 
-  if (stage === 'thought_normalizer') {
-    return alignWithParentOrStack(raw, nodes, X.normalized, GROUP_TOP);
+  let top = GROUP_TOP;
+  for (const id of subtaskIds) {
+    const branchCount = Math.max(1, branchCounts.get(id) ?? 1);
+    const height = Math.max(MIN_GROUP_HEIGHT, branchCount * BRANCH_GAP + GROUP_PADDING_Y);
+    const subtaskY = top + Math.max(18, ((branchCount - 1) * BRANCH_GAP) / 2);
+    metrics.set(id, { top, height, subtaskY });
+    top += height;
   }
-
-  if (stage === 'verifier_scorer') {
-    return alignWithParentOrStack(raw, nodes, X.scored, GROUP_TOP);
-  }
-
-  if (stage === 'improver') {
-    return alignWithParentOrStack(raw, nodes, X.improved, GROUP_TOP);
-  }
-
-  if (stage === 'aggregator') {
-    return { x: X.aggregation, y: averageY(nodes, 'verifier_scorer') ?? ROOT_Y };
-  }
-
-  if (stage === 'final_validator') {
-    return alignWithParentOrStack(raw, nodes, X.validation, ROOT_Y);
-  }
-
-  return { x: X.candidate, y: GROUP_TOP + nodes.length * 32 };
+  return metrics;
 }
 
-function alignWithParentOrStack(raw: Record<string, unknown>, nodes: Node<GraphNodeData>[], x: number, fallbackY: number) {
-  const metadata = isRecord(raw.metadata) ? raw.metadata : {};
+function computeGraphCenterY(metrics: Map<string, { top: number; height: number }>) {
+  const groups = [...metrics.values()];
+  if (!groups.length) return ROOT_Y;
+  const first = groups[0];
+  const last = groups[groups.length - 1];
+  return (first.top + last.top + last.height) / 2;
+}
+
+function alignWithParent(
+  metadata: Record<string, unknown>,
+  positionById: Map<string, { x: number; y: number }>,
+  x: number,
+  fallbackY: number,
+) {
   const parentIds = Array.isArray(metadata.parent_ids) ? metadata.parent_ids.map(String) : [];
-  const parent = nodes.find((node) => parentIds.includes(node.id));
-  if (parent) return { x, y: parent.position.y };
-  return { x, y: fallbackY + nodes.length * 32 };
+  const parent = parentIds.map((id) => positionById.get(id)).find(Boolean);
+  if (parent) return { x, y: parent.y };
+  return { x, y: fallbackY };
 }
 
-function averageY(nodes: Node<GraphNodeData>[], stage: string) {
-  const selected = nodes.filter((node) => node.data.stage === stage);
-  if (!selected.length) return null;
-  return selected.reduce((sum, node) => sum + node.position.y, 0) / selected.length;
+function averagePositionY(positionById: Map<string, { x: number; y: number }>, nodes: Node<GraphNodeData>[], stage: string) {
+  const ys = nodes
+    .filter((node) => node.data.stage === stage)
+    .map((node) => positionById.get(node.id)?.y)
+    .filter((value): value is number => typeof value === 'number');
+  if (!ys.length) return null;
+  return ys.reduce((sum, y) => sum + y, 0) / ys.length;
 }
 
 function subtaskIndex(id: string) {
@@ -230,11 +296,11 @@ function subtaskIndex(id: string) {
 }
 
 function compactNodeWidth(stage: string) {
-  if (stage === 'root') return 92;
-  if (stage === 'expert_router') return 124;
-  if (stage === 'candidate_generator') return 134;
-  if (stage === 'aggregator' || stage === 'final_validator') return 116;
-  return 104;
+  if (stage === 'root') return 86;
+  if (stage === 'expert_router') return 112;
+  if (stage === 'candidate_generator') return 120;
+  if (stage === 'aggregator' || stage === 'final_validator') return 104;
+  return 96;
 }
 
 function compactLabel(label: string) {
@@ -244,6 +310,7 @@ function compactLabel(label: string) {
     .replace('normalized', 'norm')
     .replace('aggregation', 'agg')
     .replace('validation', 'valid')
+    .replace('scored', 'score')
     .replace('technical flow', 'technical')
     .replace('catalyst driven', 'catalyst')
     .replace('risk first', 'risk')
