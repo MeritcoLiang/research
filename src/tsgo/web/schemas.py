@@ -37,3 +37,26 @@ class GraphResponse(BaseModel):
     trace_id: str
     nodes: list[dict[str, Any]]
     edges: list[dict[str, Any]]
+
+
+class HistoryTraceItem(BaseModel):
+    history_id: str
+    session_id: str | None
+    llm_provider: str | None
+    trace_id: str
+    final_state_id: str | None
+    final_status: str | None
+    state_count: int
+    event_count: int
+    user_query_preview: str | None
+    final_draft_preview: str | None
+    modified_time: float
+
+
+class HistoryListResponse(BaseModel):
+    items: list[HistoryTraceItem]
+
+
+class HistoryGraphResponse(BaseModel):
+    summary: HistoryTraceItem
+    graph: GraphResponse
