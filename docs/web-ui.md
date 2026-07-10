@@ -14,7 +14,7 @@ deepseek       # SecondaryMarketAnalyst Stage flow + DeepSeek 实现 LLM Operato
 
 流程图的用户可见标签必须语义化，不展示内部 `state_id`。`state_id` 只作为 React Flow 的内部 key 和调试 metadata 使用。
 
-主流程采用**从左到右**的层级展开，并采用紧凑列距，避免完整分支展开后过度松散：
+主流程采用**从左到右**的层级展开：
 
 ```text
 root -> expert SecondaryMarketAnalyst -> subtask s1/s2/... -> candidates -> normalized -> scored -> aggregation -> validation
@@ -29,7 +29,45 @@ edge.type = default
 markerEnd = ArrowClosed
 ```
 
-这样线条会从左侧矩形的右边接出，进入右侧矩形的左边，而不是从上下边或节点中心乱连。边的 `handoff` / `decomposes_to` / `parent` 类型保存在 edge data 中，不作为主图 label 展示，避免画面噪声。
+## 紧凑且稳定的流程图布局
+
+前端 `web/src/graph/eventReducer.ts` 会在每次节点 upsert、patch 或 snapshot hydrate 后重新计算全图布局，避免“某个子节点先到、父节点后到”导致位置漂移。
+
+紧凑布局常量：
+
+```text
+root:        x = 0
+expert:      x = 150
+subtask:     x = 320
+candidate:   x = 520
+normalized:  x = 720
+scored:      x = 920
+improved:    x = 1120
+aggregation: x = 1320
+validation:  x = 1500
+
+GROUP_TOP        = 28
+BRANCH_GAP       = 32
+MIN_GROUP_HEIGHT = 88
+```
+
+每个 subtask 分组高度会根据该 subtask 下 candidate branch 数动态计算：
+
+```text
+group_height = max(88, branch_count * 32 + 56)
+```
+
+因此真实 LLM 默认 `num_branches=1` 时图会很紧凑；deterministic stage flow 使用 6 branches 时仍能完整展开。
+
+节点 label 也会压缩：
+
+```text
+SecondaryMarketAnalyst -> Secondary / Market
+candidate              -> cand
+normalized             -> norm
+aggregation            -> agg
+validation             -> valid
+```
 
 ## LLM 选择与发送任务
 
@@ -72,48 +110,42 @@ deepseek     -> DeepSeekOpenAIChatModelClient.from_env() + run_secondary_market_
 
 注意：LLM 选择只是选择 Operator 的实现方式，不引入新的执行语义层。
 
-## 紧凑流程图布局
+## 历史 Session 加载
 
-前端 `web/src/graph/eventReducer.ts` 使用语义布局常量：
+Web UI 可以加载 `traces/web/*.jsonl` 中的历史 trace，并重新绘制流程图。
 
-```text
-root:        x = 0
-expert:      x = 180
-subtask:     x = 380
-candidate:   x = 620
-normalized:  x = 850
-scored:      x = 1080
-improved:    x = 1310
-aggregation: x = 1540
-validation:  x = 1760
-```
-
-纵向布局：
+后端 API：
 
 ```text
-ROOT_Y       = 360
-GROUP_TOP    = 40
-SUBTASK_GAP  = 250
-BRANCH_GAP   = 44
+GET /api/history              # 列出历史 trace
+GET /api/history/{history_id} # 返回历史 trace summary + GraphSnapshot
 ```
 
-节点 label 会压缩为更短的可读标签，例如：
+前端 `ChatPanel` 提供“历史 Session”下拉框：
 
 ```text
-SecondaryMarketAnalyst -> Secondary\nMarket
-candidate              -> cand
-normalized             -> norm
-aggregation            -> agg
-validation             -> valid
+选择历史 trace -> 加载流程图
+刷新列表
 ```
 
-节点宽度按 stage 限制，避免默认节点过宽造成图面松散。
+加载历史 trace 时不重新调用 LLM，只读取本地 JSONL 最后一条 trace，重建 GraphSnapshot 并在 FlowCanvas 中展示。
 
-刷新页面后，前端会从 `localStorage` 恢复最新 graph snapshot；一次 pipeline 完成时，后端返回完整 graph snapshot，前端用 snapshot hydrate 全图，避免仅依赖增量事件造成 root、expert 或 subtask 丢失。
+## 页面高度与滚动
 
-## 节点详情 Inspector
+页面不再展示 EventTimeline。事件仍然保留在前端 state 中，用于运行状态、调试和未来 Inspector 扩展，但不占用主页面空间。
 
-`StateInspector` 不再默认把 metadata 整块 JSON 贴出来。新的详情面板按用户阅读顺序分区：
+FlowCanvas 的高度跟随流程图内容动态计算：
+
+```text
+canvas_height = max(460, max_node_y + 120)
+canvas_width  = max(900, max_node_x + 180)
+```
+
+纵向空间由浏览器页面滚动条承载，避免在流程图内部再出现局部纵向滚动；横向展开较长时，FlowCanvas 区域保留横向滚动条。
+
+## 节点详情
+
+`StateInspector` 不默认贴整块 JSON，而是按阅读顺序分区展示：
 
 ```text
 概览
@@ -127,30 +159,7 @@ Subtask
 调试：原始 metadata
 ```
 
-其中：
-
-- `输入` 展示父节点、subtask、分支、prompt id；
-- `输出` 展示摘要、claim 数、critique 数、聚合选中的 subtasks / branches；
-- `专家选择` 展示 selected expert、标的、周期、意图、缺失信息；
-- `Subtask` 展示 required outputs、dependencies、evidence needed；
-- `验证结果` 展示 pass、confidence、blocking issues、required edits、warnings；
-- `模型调用` 展示 prompt preview 与 raw model preview；
-- `调试：原始 metadata` 仍保留，但折叠到最后，仅用于排查问题。
-
-这样可以把输入/输出/评分/验证信息分开阅读，避免直接阅读大段 JSON。
-
-## 页面高度与滚动
-
-页面不再展示 EventTimeline。事件仍然保留在前端 state 中，用于运行状态、调试和未来 Inspector 扩展，但不占用主页面空间。
-
-FlowCanvas 的高度跟随流程图内容动态计算：
-
-```text
-canvas_height = max(560, max_node_y + 180)
-canvas_width  = max(980, max_node_x + 260)
-```
-
-纵向空间由浏览器页面滚动条承载，避免在流程图内部再出现局部纵向滚动；横向展开较长时，FlowCanvas 区域保留横向滚动条。
+输入区展示父节点、subtask、分支和 prompt id；输出区展示摘要、claims、critique、聚合选择和策略；验证区展示 pass、confidence、blocking issues、required edits 和 warnings。原始 metadata 仅作为 debug 折叠项保留。
 
 ## 后端结构
 
@@ -162,7 +171,7 @@ src/tsgo/experts/            # 专家化 Operators
 src/tsgo/azure_openai_client.py
 src/tsgo/deepseek_client.py
 src/tsgo/web/app.py          # FastAPI app
-src/tsgo/web/sessions.py     # session manager / Web message adapter
+src/tsgo/web/sessions.py     # session manager / Web message adapter + history loader
 src/tsgo/web/event_bus.py    # AsyncQueueEventSink
 src/tsgo/web/schemas.py      # API schemas
 ```
@@ -210,14 +219,14 @@ http://localhost:8000
 ws://localhost:8000
 ```
 
-也可以通过 `VITE_API_BASE` / `VITE_WS_BASE` 覆盖。
-
 ## API
 
 ```text
 POST /api/sessions
 POST /api/sessions/{session_id}/messages
 GET  /api/sessions/{session_id}/traces/{trace_id}/graph
+GET  /api/history
+GET  /api/history/{history_id}
 WS   /ws/sessions/{session_id}
 ```
 
@@ -255,23 +264,6 @@ error
 ├────────────────────┬───────────────────────┬─────────────┤
 │ ChatPanel          │ FlowCanvas             │ Inspector   │
 │ 输入 + LLM选择      │ 左到右语义流程图          │ 节点详情      │
+│ 历史 Session 加载   │                        │ 输入/输出分区   │
 └────────────────────┴───────────────────────┴─────────────┘
 ```
-
-`StateInspector` 默认展示节点标签、阶段、状态、评分、摘要；内部 ID 和 metadata 放入“调试信息”折叠区。页面高度跟随 FlowCanvas，主浏览器滚动条满足流程图纵向展开需求。
-
-## 等价性测试
-
-`tests/test_web_message_equivalence.py` 会验证：
-
-```text
-run_secondary_market_stage_flow(message)
-```
-
-和：
-
-```text
-SessionManager.handle_user_message(message, llm_provider="stage_flow")
-```
-
-产生同样的标准化 trace shape。
