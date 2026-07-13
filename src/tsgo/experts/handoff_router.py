@@ -25,7 +25,18 @@ from .secondary_market import (
 )
 
 EXPERT_ROUTER_AGENT = "ExpertRouter"
+HANDOFF_KIND = "agents_sdk_tool_handoff"
 HANDOFF_TOOL_NAME = "transfer_to_secondary_market_analyst"
+ROUTING_SOURCE_LLM_JSON = "llm_router_json"
+ROUTING_SOURCE_LOCAL_FALLBACK = "local_inference_fallback"
+VALID_TIME_HORIZONS = {
+    "intraday",
+    "short_term",
+    "swing",
+    "medium_term",
+    "long_term",
+    "unknown",
+}
 HANDOFF_INPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -118,6 +129,7 @@ class SecondaryMarketLLMExpertRouterOperator(Operator):
             raw_model_output=raw,
             parse_error=parse_error,
         )
+        handoff_logs = build_handoff_logs(handoff)
 
         trace.task_info = TaskInfo(
             user_query=user_query,
@@ -139,9 +151,17 @@ class SecondaryMarketLLMExpertRouterOperator(Operator):
                 "missing_context": handoff["missing_context"],
                 "prompt_id": STAGE_PROMPT_IDS[self.name],
                 "source_agent": EXPERT_ROUTER_AGENT,
+                "handoff_kind": HANDOFF_KIND,
                 "handoff_tool_name": HANDOFF_TOOL_NAME,
                 "handoff_description": HANDOFF_DESCRIPTION,
                 "handoff_input_schema": HANDOFF_INPUT_SCHEMA,
+                "handoff_input": handoff["handoff_input"],
+                "handoff_output": handoff["handoff_output"],
+                "handoff_status": handoff["handoff_status"],
+                "routing_decision_source": handoff["routing_decision_source"],
+                "routing_confidence": handoff["routing_confidence"],
+                "route_warnings": handoff["route_warnings"],
+                "handoff_log": handoff_logs,
                 "expert_router_instructions": EXPERT_ROUTER_INSTRUCTIONS,
                 "target_instructions": SECONDARY_MARKET_ANALYST_INSTRUCTIONS,
                 "prompt_preview": prompt[:240],
@@ -150,15 +170,22 @@ class SecondaryMarketLLMExpertRouterOperator(Operator):
         )
         trace.metadata["expert_profile"] = EXPERT_PROFILE
         trace.metadata["expert_handoff"] = handoff
+        trace.metadata["handoff_log"] = handoff_logs
+
         errors = [parse_error] if parse_error else []
         return OperatorResult(
-            logs=[f"{EXPERT_ROUTER_AGENT} invoked {HANDOFF_TOOL_NAME} -> {EXPERT_PROFILE}。"],
+            logs=handoff_logs,
             errors=errors,
             metadata={
                 "expert_handoff": handoff,
                 "prompt_id": STAGE_PROMPT_IDS[self.name],
                 "operator_kind": "llm_operator",
                 "operator_mode": "handoff_router",
+                "routing_decision_source": handoff["routing_decision_source"],
+                "routing_confidence": handoff["routing_confidence"],
+                "handoff_status": handoff["handoff_status"],
+                "route_warnings": handoff["route_warnings"],
+                "handoff_log": handoff_logs,
                 "llm_input": prompt,
                 "llm_output": raw,
             },
@@ -188,26 +215,46 @@ def build_secondary_market_handoff(
 ) -> dict[str, Any]:
     """Normalize a router tool call into durable trace metadata."""
 
-    selected_expert = str(packet.get("selected_expert") or EXPERT_PROFILE)
-    tool_name = str(packet.get("tool_name") or HANDOFF_TOOL_NAME)
     route_warnings: list[str] = []
+    if parse_error:
+        route_warnings.append("router_output_parse_failed")
+
+    selected_expert = _string_field(packet, "selected_expert", EXPERT_PROFILE, route_warnings)
+    tool_name = _string_field(packet, "tool_name", HANDOFF_TOOL_NAME, route_warnings)
     if selected_expert != EXPERT_PROFILE:
         route_warnings.append(f"unsupported_selected_expert:{selected_expert}")
         selected_expert = EXPERT_PROFILE
     if tool_name != HANDOFF_TOOL_NAME:
         route_warnings.append(f"unsupported_handoff_tool:{tool_name}")
         tool_name = HANDOFF_TOOL_NAME
-    if parse_error:
-        route_warnings.append("router_output_parse_failed")
 
-    missing_context = _string_list(packet.get("missing_context")) or list(inferred["missing_context"])
-    reason = str(packet.get("reason") or "用户请求需要二级市场分析专家接管。")
-    asset = str(packet.get("asset_or_market") or inferred["asset_or_market"])
-    horizon = str(packet.get("time_horizon") or inferred["time_horizon"])
-    user_intent = str(packet.get("user_intent") or "market_analysis")
+    reason = _string_field(packet, "reason", "用户请求需要二级市场分析专家接管。", route_warnings)
+    asset = _string_field(packet, "asset_or_market", str(inferred["asset_or_market"]), route_warnings)
+    horizon = _normalize_time_horizon(
+        _string_field(packet, "time_horizon", str(inferred["time_horizon"]), route_warnings),
+        route_warnings,
+    )
+    user_intent = _string_field(packet, "user_intent", "market_analysis", route_warnings)
+    if user_intent != "market_analysis":
+        route_warnings.append(f"unsupported_user_intent:{user_intent}")
+        user_intent = "market_analysis"
+
+    missing_context = _merge_missing_context(
+        _string_list(packet.get("missing_context")),
+        list(inferred["missing_context"]),
+    )
+    decision_source = ROUTING_SOURCE_LOCAL_FALLBACK if parse_error else ROUTING_SOURCE_LLM_JSON
+    handoff_input = {
+        "reason": reason,
+        "asset_or_market": asset,
+        "time_horizon": horizon,
+        "user_intent": user_intent,
+        "missing_context": missing_context,
+    }
 
     return {
-        "handoff_kind": "agents_sdk_tool_handoff",
+        "handoff_kind": HANDOFF_KIND,
+        "handoff_status": "invoked",
         "source_agent": EXPERT_ROUTER_AGENT,
         "target_agent": selected_expert,
         "selected_expert": selected_expert,
@@ -228,19 +275,44 @@ def build_secondary_market_handoff(
         ],
         "router_instructions": EXPERT_ROUTER_INSTRUCTIONS,
         "target_instructions": SECONDARY_MARKET_ANALYST_INSTRUCTIONS,
-        "handoff_input": {
-            "reason": reason,
-            "asset_or_market": asset,
-            "time_horizon": horizon,
-            "user_intent": user_intent,
-            "missing_context": missing_context,
-        },
+        "handoff_input": handoff_input,
         "handoff_output": f"Control transferred to {selected_expert}.",
+        "handoff_event_label": f"{EXPERT_ROUTER_AGENT} --{tool_name}--> {selected_expert}",
+        "routing_decision_source": decision_source,
+        "routing_confidence": "low" if route_warnings else "high",
         "original_user_query": user_query,
         "llm_input": prompt,
         "llm_output": raw_model_output,
+        "prompt_preview": prompt[:240],
+        "raw_model_preview": raw_model_output[:240],
         "route_warnings": route_warnings,
     }
+
+
+def build_handoff_logs(handoff: dict[str, Any]) -> list[str]:
+    """Return readable trace logs for router decision, tool call, and takeover."""
+
+    missing_context = handoff.get("missing_context", [])
+    missing_text = ", ".join(str(item) for item in missing_context) if missing_context else "none"
+    warnings = handoff.get("route_warnings", [])
+    logs = [
+        f"{EXPERT_ROUTER_AGENT} loaded routing instructions.",
+        (
+            f"{EXPERT_ROUTER_AGENT} selected {handoff['selected_expert']} via "
+            f"{handoff['tool_name']} because: {handoff['handoff_reason']}"
+        ),
+        (
+            "handoff_input="
+            f"asset_or_market={handoff['asset_or_market']}; "
+            f"time_horizon={handoff['time_horizon']}; "
+            f"user_intent={handoff['user_intent']}; "
+            f"missing_context={missing_text}"
+        ),
+        f"{handoff['handoff_output']} Target instructions are now active.",
+    ]
+    if warnings:
+        logs.append(f"handoff_warnings={', '.join(str(item) for item in warnings)}")
+    return logs
 
 
 def _infer_routing_context(user_query: str) -> dict[str, Any]:
@@ -285,7 +357,35 @@ def _parse_router_packet(raw: str) -> tuple[dict[str, Any], str | None]:
     return parsed, None
 
 
+def _string_field(packet: dict[str, Any], field: str, fallback: str, route_warnings: list[str]) -> str:
+    value = packet.get(field)
+    if value is None:
+        route_warnings.append(f"missing_{field}")
+        return fallback
+    text = str(value).strip()
+    if not text:
+        route_warnings.append(f"empty_{field}")
+        return fallback
+    return text
+
+
+def _normalize_time_horizon(value: str, route_warnings: list[str]) -> str:
+    horizon = value.strip().lower()
+    if horizon in VALID_TIME_HORIZONS:
+        return horizon
+    route_warnings.append(f"unsupported_time_horizon:{value}")
+    return "unknown"
+
+
+def _merge_missing_context(router_items: list[str], inferred_items: list[str]) -> list[str]:
+    merged: list[str] = []
+    for item in [*router_items, *inferred_items]:
+        if item and item not in merged:
+            merged.append(item)
+    return merged
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [str(item) for item in value]
+    return [str(item) for item in value if str(item).strip()]
