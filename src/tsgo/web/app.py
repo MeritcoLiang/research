@@ -78,9 +78,9 @@ def load_history_graph(history_id: str) -> HistoryGraphResponse:
 async def websocket_session(websocket: WebSocket, session_id: str) -> None:
     await websocket.accept()
     try:
-        manager.get_session(session_id)
+        manager.ensure_session(session_id)
     except KeyError:
-        await websocket.send_json({"type": "error", "message": f"未知 session_id：{session_id}"})
+        await websocket.send_json({"type": "error", "message": f"非法 session_id：{session_id}"})
         await websocket.close(code=1008)
         return
 
