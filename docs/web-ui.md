@@ -59,15 +59,56 @@ group_height = max(88, branch_count * 32 + 56)
 
 因此真实 LLM 默认 `num_branches=1` 时图会很紧凑；deterministic stage flow 使用 6 branches 时仍能完整展开。
 
-节点 label 也会压缩：
+## root / expert / subtask 为什么没有 Prompt preview
+
+`Prompt preview` 只表示**真实 LLM 调用的输入 prompt**。因此只有使用 LLM 的 Operator 节点，例如 candidate、normalized、scored、aggregated、validated，才会有：
 
 ```text
-SecondaryMarketAnalyst -> Secondary / Market
-candidate              -> cand
-normalized             -> norm
-aggregation            -> agg
-validation             -> valid
+prompt_preview
+raw_model_preview
+llm_input
+llm_output
 ```
+
+以下节点不会有 LLM prompt：
+
+```text
+root                 # 用户输入节点
+expert Secondary...  # ExpertRouter / handoff 结果
+subtask s1/s2/...    # ProblemDecomposer 的结构化输出
+```
+
+这些节点现在会展示：
+
+```text
+operator_input
+operator_output
+no_llm_reason
+```
+
+右侧节点详情会明确说明“该节点没有直接调用 LLM”，而不是空白或让用户误以为数据缺失。
+
+## LLM 输入 / 输出完整查看
+
+节点详情默认展示摘要和 preview，避免右侧面板被长 prompt 或长模型输出撑爆。
+
+当节点包含完整 LLM 信息时，会出现按钮：
+
+```text
+查看完整 LLM 输入
+查看完整 LLM 输出
+```
+
+点击后会打开弹出窗口，展示完整 prompt 或完整 raw model output。
+
+同样地，对于 control 节点或 deterministic Operator，会显示：
+
+```text
+查看完整输入
+查看完整输出
+```
+
+用于查看完整的 `operator_input` / `operator_output`。
 
 ## LLM 选择与发送任务
 
@@ -154,12 +195,12 @@ canvas_width  = max(900, max_node_x + 180)
 专家选择
 Subtask
 验证结果
-模型调用
+LLM 调用
 其他元信息
 调试：原始 metadata
 ```
 
-输入区展示父节点、subtask、分支和 prompt id；输出区展示摘要、claims、critique、聚合选择和策略；验证区展示 pass、confidence、blocking issues、required edits 和 warnings。原始 metadata 仅作为 debug 折叠项保留。
+输入区展示父节点、subtask、分支、prompt id、Operator 类型和 Operator 输入预览；输出区展示摘要、Operator 输出预览、claims、critique、聚合选择和策略；验证区展示 pass、confidence、blocking issues、required edits 和 warnings。原始 metadata 仅作为 debug 折叠项保留。
 
 ## 后端结构
 
@@ -255,15 +296,3 @@ error
 ```
 
 `run_started` 会在后端正式开始任务时立即返回，避免真实 LLM 调用期间前端看起来“没有响应”。
-
-## 页面布局
-
-```text
-┌──────────────────────────────────────────────────────────┐
-│ Header: session / trace / run status                     │
-├────────────────────┬───────────────────────┬─────────────┤
-│ ChatPanel          │ FlowCanvas             │ Inspector   │
-│ 输入 + LLM选择      │ 左到右语义流程图          │ 节点详情      │
-│ 历史 Session 加载   │                        │ 输入/输出分区   │
-└────────────────────┴───────────────────────┴─────────────┘
-```
