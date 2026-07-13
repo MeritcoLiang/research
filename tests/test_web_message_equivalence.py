@@ -39,3 +39,18 @@ def test_web_message_path_equivalent_to_secondary_market_stage_flow(tmp_path: Pa
     )
 
     assert _normalized_trace_shape(cli_trace) == _normalized_trace_shape(web_trace)
+
+
+def test_stale_browser_session_id_is_rehydrated(tmp_path: Path) -> None:
+    manager = SessionManager(trace_dir=tmp_path / "web")
+    stale_session_id = "session_deadbeef1234"
+
+    trace = manager.handle_user_message(
+        session_id=stale_session_id,
+        message="请用二级市场分析师视角分析 AAPL 的中期机会和风险。",
+        num_branches=1,
+    )
+
+    assert stale_session_id in manager.sessions
+    assert trace.id in manager.sessions[stale_session_id].traces
+    assert trace.metadata.get("expert_profile") == "SecondaryMarketAnalyst"
