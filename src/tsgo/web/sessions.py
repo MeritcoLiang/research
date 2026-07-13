@@ -3,6 +3,11 @@
 The Web UI can run the deterministic SecondaryMarketAnalyst Stage flow or run
 the same Stage flow with real LLM Operators. LLM selection does not create a new
 execution semantic; it only chooses how Operators are implemented for this run.
+
+Browser sessions are stored in memory on the backend, while normal browsers may
+keep an old session_id in localStorage across backend restarts. To avoid the
+"normal browser fails, incognito works" failure mode, the manager can rehydrate
+an empty WebSession for a known client-provided session_id.
 """
 
 from __future__ import annotations
@@ -49,6 +54,20 @@ class SessionManager:
         self.sessions[session.session_id] = session
         return session
 
+    def ensure_session(self, session_id: str) -> WebSession:
+        """Return an existing session or create an empty one for a stale client id.
+
+        This is intentionally narrow: it only accepts ids that look like Web UI
+        session ids. It lets normal browsers recover after backend restarts while
+        preserving the client-side session key.
+        """
+
+        if not session_id.startswith("session_") or len(session_id) < len("session_") + 6:
+            raise KeyError(f"非法 session_id：{session_id}")
+        if session_id not in self.sessions:
+            self.sessions[session_id] = WebSession(session_id=session_id)
+        return self.sessions[session_id]
+
     def get_session(self, session_id: str) -> WebSession:
         try:
             return self.sessions[session_id]
@@ -66,7 +85,7 @@ class SessionManager:
     ) -> Trace:
         """Run a Web UI message through the selected Operator implementation."""
 
-        session = self.get_session(session_id)
+        session = self.ensure_session(session_id)
         provider = _normalize_llm_provider(llm_provider)
         trace_path = self.trace_dir / f"{session_id}_{provider}.jsonl"
 
@@ -298,7 +317,7 @@ def _claim_from_dict(raw: dict) -> Claim:
         confidence=raw.get("confidence"),
         evidence_ids=[str(item) for item in raw.get("evidence_ids", [])],
         verifier_notes=[str(item) for item in raw.get("verifier_notes", [])],
-        metadata=raw.get("metadata", {}) if isinstance(raw.get("metadata"), dict) else {},
+        metadata=raw.get("metadata", {}) if isinstance(raw.get("metadata", {}), dict) else {},
     )
 
 
