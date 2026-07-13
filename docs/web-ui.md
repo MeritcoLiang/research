@@ -171,6 +171,21 @@ GET /api/history/{history_id} # 返回历史 trace summary + GraphSnapshot
 
 加载历史 trace 时不重新调用 LLM，只读取本地 JSONL 最后一条 trace，重建 GraphSnapshot 并在 FlowCanvas 中展示。
 
+## 普通浏览器缓存与 session 恢复
+
+普通浏览器会保留 `localStorage`，无痕浏览器不会。后端 session 当前保存在内存里，因此后端重启后，普通浏览器里旧的 `tsgo_session_id` 可能已经不存在，导致普通浏览器不可用，而无痕浏览器因为没有旧缓存反而可以正常创建新 session。
+
+修复策略：
+
+```text
+1. 前端增加 tsgo_storage_version。
+2. 版本变化时清理 tsgo_session_id、tsgo_latest_graph、tsgo_latest_summary。
+3. WebSocket 建连时后端使用 ensure_session(session_id)，如果是合法但过期的 session_id，则自动重建空 WebSession。
+4. 前端在 WebSocket error 时会删除旧 session_id 并重新创建 session。
+```
+
+这样普通浏览器中的旧 session/cache 不会再阻塞任务发送；历史 trace 仍然通过 `/api/history` 从本地 trace 文件加载。
+
 ## 页面高度与滚动
 
 页面不再展示 EventTimeline。事件仍然保留在前端 state 中，用于运行状态、调试和未来 Inspector 扩展，但不占用主页面空间。
@@ -296,3 +311,14 @@ error
 ```
 
 `run_started` 会在后端正式开始任务时立即返回，避免真实 LLM 调用期间前端看起来“没有响应”。
+
+## 页面布局
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│ Header: session / trace / run status                     │
+├────────────────────┬───────────────────────┬─────────────┤
+│ ChatPanel          │ FlowCanvas             │ Inspector   │
+│ 输入 + LLM选择      │ 左到右语义流程图          │ 节点详情      │
+└────────────────────┴───────────────────────┴─────────────┘
+```
