@@ -1,4 +1,4 @@
-"""LLM-backed operators for Pipeline v0.3.
+"""LLM Operators for Pipeline v0.3.
 
 These operators use the same ThoughtState / OperatorResult / Trace contracts as
 v0.2, but replace deterministic mock transformations with model calls and
@@ -91,6 +91,15 @@ class LLMCandidateGeneratorOperator(Operator):
                                 "subtask_id": item.id,
                                 "prompt_preview": prompt[:240],
                                 "raw_model_preview": raw[:240],
+                                "llm_input": prompt,
+                                "llm_output": raw,
+                                "operator_input": {
+                                    "user_query": user_query,
+                                    "subtask": item.question,
+                                    "strategy": strategy,
+                                },
+                                "operator_output": {"draft": draft},
+                                "operator_kind": "llm_operator",
                                 "operator_mode": "llm_v0.3",
                             },
                         )
@@ -138,7 +147,22 @@ class LLMThoughtNormalizerOperator(Operator):
                     assumptions=packet["assumptions"],
                     missing_info=packet["missing_info"],
                     failure_modes=packet["failure_modes"],
-                    metadata={**state.metadata, "operator_mode": "llm_v0.3"},
+                    metadata={
+                        **state.metadata,
+                        "prompt_preview": prompt[:240],
+                        "raw_model_preview": raw[:240],
+                        "llm_input": prompt,
+                        "llm_output": raw,
+                        "operator_input": state.to_dict(),
+                        "operator_output": {
+                            "summary": packet["summary"],
+                            "claims": [claim.text for claim in packet["claims"]],
+                            "assumptions": packet["assumptions"],
+                            "missing_info": packet["missing_info"],
+                        },
+                        "operator_kind": "llm_operator",
+                        "operator_mode": "llm_v0.3",
+                    },
                 )
             )
         return OperatorResult(new_states=normalized, errors=errors, logs=[f"LLM 规范化状态数量：{len(normalized)}"])
@@ -186,9 +210,17 @@ class LLMVerifierScorerOperator(Operator):
             if packet is None:
                 score = Score(notes=["missing score packet"])
                 critique = ["模型没有返回该 state 的评分。"]
+                output_packet: dict[str, Any] = {"critique": critique, "score": score}
             else:
                 score = packet["score"]
                 critique = packet["weaknesses"] + packet["critical_errors"] + packet["improvement_instructions"]
+                output_packet = {
+                    "score": score,
+                    "strengths": packet["strengths"],
+                    "weaknesses": packet["weaknesses"],
+                    "critical_errors": packet["critical_errors"],
+                    "improvement_instructions": packet["improvement_instructions"],
+                }
             scored.append(
                 _clone_state(
                     state,
@@ -197,7 +229,17 @@ class LLMVerifierScorerOperator(Operator):
                     status="scored",
                     score=score,
                     critique=critique,
-                    metadata={**state.metadata, "operator_mode": "llm_v0.3"},
+                    metadata={
+                        **state.metadata,
+                        "prompt_preview": prompt[:240],
+                        "raw_model_preview": raw[:240],
+                        "llm_input": prompt,
+                        "llm_output": raw,
+                        "operator_input": [item.to_dict() for item in states],
+                        "operator_output": output_packet,
+                        "operator_kind": "llm_operator",
+                        "operator_mode": "llm_v0.3",
+                    },
                 )
             )
         return OperatorResult(new_states=scored, logs=[f"LLM 评分状态数量：{len(scored)}"])
@@ -250,7 +292,18 @@ class LLMImproverOperator(Operator):
                     status="improved",
                     draft=packet["draft"],
                     critique=packet["change_summary"],
-                    metadata={**state.metadata, "operator_mode": "llm_v0.3", "improvement_round": 1},
+                    metadata={
+                        **state.metadata,
+                        "prompt_preview": prompt[:240],
+                        "raw_model_preview": raw[:240],
+                        "llm_input": prompt,
+                        "llm_output": raw,
+                        "operator_input": {"state": state.to_dict(), "critique": state.critique},
+                        "operator_output": packet,
+                        "operator_kind": "llm_operator",
+                        "operator_mode": "llm_v0.3",
+                        "improvement_round": 1,
+                    },
                 )
             )
         return OperatorResult(new_states=improved, errors=errors, logs=[f"LLM 改进状态数量：{len(improved)}"])
@@ -302,7 +355,7 @@ class LLMAggregatorOperator(Operator):
             user_query=user_query,
             task_type=top_states[0].task_type,
             draft=packet["draft"],
-            summary="Pipeline v0.3 LLM-backed aggregation result.",
+            summary="Pipeline v0.3 LLM aggregation result.",
             claims=packet["selected_claims"],
             score=top_states[0].score,
             status="aggregated",
@@ -312,6 +365,13 @@ class LLMAggregatorOperator(Operator):
                 "selected_subtask_ids": [state.metadata.get("subtask_id") for state in top_states],
                 "conflicts": packet["conflicts"],
                 "resolutions": packet["resolutions"],
+                "prompt_preview": prompt[:240],
+                "raw_model_preview": raw[:240],
+                "llm_input": prompt,
+                "llm_output": raw,
+                "operator_input": [state.to_dict() for state in top_states],
+                "operator_output": packet,
+                "operator_kind": "llm_operator",
                 "operator_mode": "llm_v0.3",
             },
         )
@@ -362,6 +422,13 @@ class LLMFinalValidatorOperator(Operator):
             metadata={
                 **state.metadata,
                 "validation": packet,
+                "prompt_preview": prompt[:240],
+                "raw_model_preview": raw[:240],
+                "llm_input": prompt,
+                "llm_output": raw,
+                "operator_input": state.to_dict(),
+                "operator_output": packet,
+                "operator_kind": "llm_operator",
                 "operator_mode": "llm_v0.3",
             },
         )
@@ -370,7 +437,7 @@ class LLMFinalValidatorOperator(Operator):
 
 
 def build_llm_operators(model_client: ModelClient, prompter: Prompter | None = None) -> dict[str, Operator]:
-    """Return the Pipeline v0.3 LLM-backed operator set."""
+    """Return the Pipeline v0.3 LLM Operator set."""
 
     return {
         "task_intake": TaskIntakeOperator(),
