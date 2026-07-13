@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Node } from 'reactflow';
 import type { GraphNodeData } from '../types';
 
@@ -9,6 +10,11 @@ type Metadata = Record<string, unknown>;
 
 type KeyValue = {
   label: string;
+  value: unknown;
+};
+
+type ModalPayload = {
+  title: string;
   value: unknown;
 };
 
@@ -25,6 +31,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 export function StateInspector({ node }: Props) {
+  const [modal, setModal] = useState<ModalPayload | null>(null);
   const metadata = (node?.data.metadata ?? {}) as Metadata;
   const validation = asRecord(metadata.validation);
   const handoff = asRecord(metadata.handoff);
@@ -38,11 +45,18 @@ export function StateInspector({ node }: Props) {
     );
   }
 
+  const llmInput = metadata.llm_input ?? metadata.prompt_full ?? metadata.prompt ?? metadata.prompt_preview;
+  const llmOutput = metadata.llm_output ?? metadata.raw_model_output ?? metadata.raw_model_preview;
+  const operatorInput = metadata.operator_input;
+  const operatorOutput = metadata.operator_output;
+  const noLlmReason = metadata.no_llm_reason;
+
   const inputItems: KeyValue[] = [
     { label: '父节点', value: shortIdList(readStringList(metadata.parent_ids)) },
     { label: 'Subtask', value: metadata.subtask_id },
     { label: '分支', value: metadata.branch_type ?? metadata.generation_strategy },
-    { label: 'Prompt', value: metadata.prompt_id },
+    { label: 'Prompt ID', value: metadata.prompt_id },
+    { label: 'Operator 类型', value: metadata.operator_kind },
   ];
 
   const outputItems: KeyValue[] = [
@@ -92,6 +106,15 @@ export function StateInspector({ node }: Props) {
     'generation_strategy',
     'branch_index',
     'prompt_id',
+    'operator_kind',
+    'operator_input',
+    'operator_output',
+    'no_llm_reason',
+    'llm_input',
+    'llm_output',
+    'prompt_full',
+    'prompt',
+    'raw_model_output',
     'claim_count',
     'critique_count',
     'selected_subtask_ids',
@@ -127,12 +150,24 @@ export function StateInspector({ node }: Props) {
       <section className="detail-section">
         <h3>输入</h3>
         <KeyValueGrid items={inputItems} compact />
+        <TextBlock title="Operator 输入预览" value={operatorInput} />
+        {hasValue(operatorInput) && (
+          <button className="link-button" type="button" onClick={() => setModal({ title: '完整 Operator 输入', value: operatorInput })}>
+            查看完整输入
+          </button>
+        )}
       </section>
 
       <section className="detail-section">
         <h3>输出</h3>
         <TextBlock title="摘要 / 输出预览" value={node.data.summary} />
+        <TextBlock title="Operator 输出预览" value={operatorOutput} />
         <KeyValueGrid items={outputItems} compact />
+        {hasValue(operatorOutput) && (
+          <button className="link-button" type="button" onClick={() => setModal({ title: '完整 Operator 输出', value: operatorOutput })}>
+            查看完整输出
+          </button>
+        )}
       </section>
 
       {handoffItems.length > 0 && (
@@ -157,13 +192,29 @@ export function StateInspector({ node }: Props) {
         </section>
       )}
 
-      {hasAnyValue(modelItems) && (
-        <section className="detail-section">
-          <h3>模型调用</h3>
-          <TextBlock title="Prompt preview" value={metadata.prompt_preview} />
-          <TextBlock title="Raw model preview" value={metadata.raw_model_preview} />
-        </section>
-      )}
+      <section className="detail-section">
+        <h3>LLM 调用</h3>
+        {hasAnyValue(modelItems) || hasValue(llmInput) || hasValue(llmOutput) ? (
+          <>
+            <TextBlock title="Prompt preview" value={metadata.prompt_preview} />
+            <TextBlock title="Raw model preview" value={metadata.raw_model_preview} />
+            <div className="button-row">
+              {hasValue(llmInput) && (
+                <button className="link-button" type="button" onClick={() => setModal({ title: '完整 LLM 输入 / Prompt', value: llmInput })}>
+                  查看完整 LLM 输入
+                </button>
+              )}
+              {hasValue(llmOutput) && (
+                <button className="link-button" type="button" onClick={() => setModal({ title: '完整 LLM 输出', value: llmOutput })}>
+                  查看完整 LLM 输出
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="empty-hint">{String(noLlmReason ?? '该节点没有直接调用 LLM。')}</p>
+        )}
+      </section>
 
       {otherItems.length > 0 && (
         <section className="detail-section">
@@ -178,6 +229,8 @@ export function StateInspector({ node }: Props) {
         <summary>调试：原始 metadata</summary>
         <pre>{JSON.stringify(metadata, null, 2)}</pre>
       </details>
+
+      {modal && <FullInfoModal payload={modal} onClose={() => setModal(null)} />}
     </section>
   );
 }
@@ -202,7 +255,23 @@ function TextBlock({ title, value }: { title: string; value: unknown }) {
   return (
     <div className="text-block">
       <div className="text-block-title">{title}</div>
-      <p>{truncate(String(value), 900)}</p>
+      <p>{truncate(formatShortValue(value), 900)}</p>
+    </div>
+  );
+}
+
+function FullInfoModal({ payload, onClose }: { payload: ModalPayload; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-label={payload.title} onClick={(event) => event.stopPropagation()}>
+        <header className="modal-header">
+          <h3>{payload.title}</h3>
+          <button type="button" onClick={onClose}>
+            关闭
+          </button>
+        </header>
+        <pre className="modal-content">{formatFullValue(payload.value)}</pre>
+      </section>
     </div>
   );
 }
@@ -298,4 +367,18 @@ function labelize(key: string) {
 function truncate(value: string, maxLength: number) {
   if (value.length <= maxLength) return value;
   return `${value.slice(0, maxLength)}…`;
+}
+
+function formatShortValue(value: unknown) {
+  if (typeof value === 'string') return value;
+  return formatFullValue(value);
+}
+
+function formatFullValue(value: unknown) {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
 }
