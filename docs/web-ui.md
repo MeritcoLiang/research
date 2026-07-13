@@ -171,6 +171,32 @@ GET /api/history/{history_id} # 返回历史 trace summary + GraphSnapshot
 
 加载历史 trace 时不重新调用 LLM，只读取本地 JSONL 最后一条 trace，重建 GraphSnapshot 并在 FlowCanvas 中展示。
 
+## URL Session 与历史重载
+
+Web UI 会把当前 session 和可重载的历史 trace 写入 URL query，避免只依赖普通浏览器中的旧 `localStorage` 状态：
+
+```text
+?session_id=session_<id>&history_id=session_<id>_<provider>.jsonl
+```
+
+加载优先级：
+
+```text
+URL session_id
+  -> localStorage tsgo_session_id
+  -> POST /api/sessions 创建新 session
+```
+
+当 URL 中存在 `history_id` 时，前端启动后会自动调用：
+
+```text
+GET /api/history/{history_id}
+```
+
+并重新 hydrate `GraphSnapshot`，因此刷新页面或复制 URL 后可以恢复历史流程图。选择历史 trace 时，前端会把对应的 `history_id` 和该历史 trace 的 `session_id` 写回 URL；发送新消息时会暂时移除 `history_id`，任务完成后再写入本次运行对应的历史文件名。
+
+这使普通浏览器、无痕浏览器和刷新页面的行为更一致：URL 是明确的会话入口，`localStorage` 只作为降级缓存。
+
 ## 页面高度与滚动
 
 页面不再展示 EventTimeline。事件仍然保留在前端 state 中，用于运行状态、调试和未来 Inspector 扩展，但不占用主页面空间。
