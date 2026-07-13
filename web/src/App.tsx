@@ -13,6 +13,8 @@ const SESSION_KEY = 'tsgo_session_id';
 const GRAPH_KEY = 'tsgo_latest_graph_v2';
 const SUMMARY_KEY = 'tsgo_latest_summary_v2';
 const LEGACY_KEYS = ['tsgo_latest_graph', 'tsgo_latest_summary'];
+const URL_SESSION_PARAM = 'session_id';
+const URL_HISTORY_PARAM = 'history_id';
 
 function wsUrl(path: string) {
   if (WS_BASE) return `${WS_BASE}${path}`;
@@ -30,14 +32,50 @@ export default function App() {
 
   useEffect(() => {
     LEGACY_KEYS.forEach(removeStorageItem);
+    removeInvalidUrlState();
 
-    const cachedSessionId = readStorageItem(SESSION_KEY);
-    if (cachedSessionId) {
-      setSessionId(cachedSessionId);
+    const urlState = readUrlState();
+    const cachedSessionId = sanitizeSessionId(readStorageItem(SESSION_KEY));
+    const initialSessionId = urlState.sessionId ?? cachedSessionId;
+
+    if (initialSessionId) {
+      adoptSession(initialSessionId, { historyId: urlState.historyId });
     } else {
-      createSession();
+      createSession({ historyId: urlState.historyId });
     }
 
+    if (urlState.historyId) {
+      loadHistory(urlState.historyId, { syncUrl: false });
+    } else {
+      hydrateCachedGraph();
+    }
+
+    refreshHistory();
+    return () => {
+      activeSocketRef.current?.close();
+      activeSocketRef.current = null;
+    };
+  }, []);
+
+  function adoptSession(nextSessionId: string, options: { historyId?: string | null } = {}) {
+    setSessionId(nextSessionId);
+    writeStorageItem(SESSION_KEY, nextSessionId);
+    syncUrlState({ sessionId: nextSessionId, historyId: options.historyId });
+  }
+
+  function createSession(options: { historyId?: string | null } = {}) {
+    fetch(`${API_BASE}/api/sessions`, { method: 'POST' })
+      .then(assertOk)
+      .then((response) => response.json())
+      .then((payload) => {
+        const nextSessionId = sanitizeSessionId(String(payload.session_id ?? ''));
+        if (!nextSessionId) throw new Error('后端未返回有效 session_id');
+        adoptSession(nextSessionId, { historyId: options.historyId ?? readUrlState().historyId });
+      })
+      .catch((error) => setFinalPreview(`创建 session 失败：${String(error)}`));
+  }
+
+  function hydrateCachedGraph() {
     const cachedGraph = readJsonStorage<GraphSnapshot>(GRAPH_KEY);
     if (isGraphSnapshot(cachedGraph)) {
       dispatchGraph({ type: 'client_graph_snapshot', graph: cachedGraph });
@@ -49,25 +87,6 @@ export default function App() {
     if (cachedSummary) {
       setFinalPreview(String(cachedSummary.final_draft_preview ?? ''));
     }
-
-    refreshHistory();
-    return () => {
-      activeSocketRef.current?.close();
-      activeSocketRef.current = null;
-    };
-  }, []);
-
-  function createSession() {
-    fetch(`${API_BASE}/api/sessions`, { method: 'POST' })
-      .then(assertOk)
-      .then((response) => response.json())
-      .then((payload) => {
-        const nextSessionId = String(payload.session_id ?? '');
-        if (!nextSessionId) throw new Error('后端未返回 session_id');
-        setSessionId(nextSessionId);
-        writeStorageItem(SESSION_KEY, nextSessionId);
-      })
-      .catch((error) => setFinalPreview(`创建 session 失败：${String(error)}`));
   }
 
   function refreshHistory() {
@@ -78,20 +97,41 @@ export default function App() {
       .catch((error) => setFinalPreview(`加载历史列表失败：${String(error)}`));
   }
 
-  function loadHistory(historyId: string) {
+  function loadHistory(historyId: string, options: { syncUrl?: boolean } = {}) {
+    const normalizedHistoryId = sanitizeHistoryId(historyId);
+    if (!normalizedHistoryId) {
+      setFinalPreview(`非法 history_id：${historyId}`);
+      return;
+    }
+
     setRunning(true);
     setSelectedNodeId(null);
-    fetch(`${API_BASE}/api/history/${encodeURIComponent(historyId)}`)
+    activeSocketRef.current?.close();
+
+    fetch(`${API_BASE}/api/history/${encodeURIComponent(normalizedHistoryId)}`)
       .then(assertOk)
       .then((response) => response.json())
       .then((payload) => {
         const graph = payload.graph as GraphSnapshot;
         const summary = payload.summary as HistoryTraceItem;
         if (!isGraphSnapshot(graph)) throw new Error('历史 trace 的 graph 结构无效');
+
+        const summarySessionId = sanitizeSessionId(summary.session_id);
+        const urlSessionId = readUrlState().sessionId;
+        const nextSessionId = summarySessionId ?? sessionId ?? urlSessionId ?? sanitizeSessionId(readStorageItem(SESSION_KEY));
+        if (nextSessionId) {
+          setSessionId(nextSessionId);
+          writeStorageItem(SESSION_KEY, nextSessionId);
+        }
+
         dispatchGraph({ type: 'client_graph_snapshot', graph });
         setFinalPreview(summary.final_draft_preview ?? '历史 trace 已加载。');
         writeJsonStorage(GRAPH_KEY, graph);
         writeJsonStorage(SUMMARY_KEY, { final_draft_preview: summary.final_draft_preview });
+
+        if (options.syncUrl !== false || !urlSessionId) {
+          syncUrlState({ sessionId: nextSessionId, historyId: normalizedHistoryId });
+        }
       })
       .catch((error) => setFinalPreview(`加载历史 trace 失败：${String(error)}`))
       .finally(() => setRunning(false));
@@ -110,6 +150,7 @@ export default function App() {
     setSelectedNodeId(null);
     removeStorageItem(GRAPH_KEY);
     removeStorageItem(SUMMARY_KEY);
+    syncUrlState({ sessionId, clearHistoryId: true });
     dispatchGraph({ type: 'client_reset' });
 
     activeSocketRef.current?.close();
@@ -136,9 +177,11 @@ export default function App() {
         }
         if (payload.type === 'pipeline_completed') {
           const summary = payload.summary as Record<string, unknown>;
+          const historyId = historyIdForRun(sessionId, llmProvider);
           setFinalPreview(String(summary.final_draft_preview ?? ''));
           writeJsonStorage(GRAPH_KEY, payload.graph);
           writeJsonStorage(SUMMARY_KEY, summary);
+          syncUrlState({ sessionId, historyId });
           setRunning(false);
           socket.close();
           refreshHistory();
@@ -148,8 +191,10 @@ export default function App() {
           setRunning(false);
           socket.close();
           if (payload.message.includes('未知 session_id') || payload.message.includes('非法 session_id')) {
+            const currentHistoryId = readUrlState().historyId;
             removeStorageItem(SESSION_KEY);
-            createSession();
+            syncUrlState({ clearSessionId: true, historyId: currentHistoryId });
+            createSession({ historyId: currentHistoryId });
           }
         }
       } catch (error) {
@@ -213,6 +258,90 @@ function isGraphSnapshot(value: unknown): value is GraphSnapshot {
   if (!value || typeof value !== 'object') return false;
   const graph = value as Partial<GraphSnapshot>;
   return Array.isArray(graph.nodes) && Array.isArray(graph.edges);
+}
+
+function historyIdForRun(sessionId: string, provider: LLMProvider) {
+  return `${sessionId}_${provider}.jsonl`;
+}
+
+function readUrlState() {
+  try {
+    const url = new URL(window.location.href);
+    return {
+      sessionId: sanitizeSessionId(url.searchParams.get(URL_SESSION_PARAM)),
+      historyId: sanitizeHistoryId(url.searchParams.get(URL_HISTORY_PARAM)),
+    };
+  } catch {
+    return { sessionId: null, historyId: null };
+  }
+}
+
+function removeInvalidUrlState() {
+  try {
+    const url = new URL(window.location.href);
+    let changed = false;
+    const rawSessionId = url.searchParams.get(URL_SESSION_PARAM);
+    const rawHistoryId = url.searchParams.get(URL_HISTORY_PARAM);
+
+    if (rawSessionId && !sanitizeSessionId(rawSessionId)) {
+      url.searchParams.delete(URL_SESSION_PARAM);
+      changed = true;
+    }
+    if (rawHistoryId && !sanitizeHistoryId(rawHistoryId)) {
+      url.searchParams.delete(URL_HISTORY_PARAM);
+      changed = true;
+    }
+    if (changed) replaceCurrentUrl(url);
+  } catch {
+    // URL state is best-effort; rendering should not depend on History API support.
+  }
+}
+
+type UrlStateUpdate = {
+  sessionId?: string | null;
+  historyId?: string | null;
+  clearSessionId?: boolean;
+  clearHistoryId?: boolean;
+};
+
+function syncUrlState(update: UrlStateUpdate) {
+  try {
+    const url = new URL(window.location.href);
+    if (update.clearSessionId) {
+      url.searchParams.delete(URL_SESSION_PARAM);
+    } else if (update.sessionId) {
+      url.searchParams.set(URL_SESSION_PARAM, update.sessionId);
+    }
+
+    if (update.clearHistoryId) {
+      url.searchParams.delete(URL_HISTORY_PARAM);
+    } else if (update.historyId) {
+      url.searchParams.set(URL_HISTORY_PARAM, update.historyId);
+    }
+
+    replaceCurrentUrl(url);
+  } catch {
+    // A stable UI is more important than URL synchronization in restricted browsers.
+  }
+}
+
+function replaceCurrentUrl(url: URL) {
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
+function sanitizeSessionId(value: string | null | undefined) {
+  const text = value?.trim();
+  if (!text) return null;
+  if (!text.startsWith('session_') || text.length < 'session_'.length + 6) return null;
+  return text;
+}
+
+function sanitizeHistoryId(value: string | null | undefined) {
+  const text = value?.trim();
+  if (!text) return null;
+  if (text.startsWith('.') || text.includes('/') || text.includes('\\')) return null;
+  if (!text.endsWith('.jsonl')) return null;
+  return text;
 }
 
 function readStorageItem(key: string) {
