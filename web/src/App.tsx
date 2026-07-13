@@ -9,6 +9,8 @@ import './style.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const WS_BASE = import.meta.env.VITE_WS_BASE ?? API_BASE.replace(/^http/, 'ws');
+const STORAGE_VERSION = '2026-07-13-session-recovery-v1';
+const STORAGE_VERSION_KEY = 'tsgo_storage_version';
 const SESSION_KEY = 'tsgo_session_id';
 const GRAPH_KEY = 'tsgo_latest_graph';
 const SUMMARY_KEY = 'tsgo_latest_summary';
@@ -27,6 +29,8 @@ export default function App() {
   const [histories, setHistories] = useState<HistoryTraceItem[]>([]);
 
   useEffect(() => {
+    migrateLocalStorage();
+
     const cachedSessionId = window.localStorage.getItem(SESSION_KEY);
     if (cachedSessionId) {
       setSessionId(cachedSessionId);
@@ -40,7 +44,7 @@ export default function App() {
         const graph = JSON.parse(cachedGraph) as GraphSnapshot;
         dispatchGraph({ type: 'client_graph_snapshot', graph });
       } catch {
-        window.localStorage.removeItem(GRAPH_KEY);
+        clearCachedGraph();
       }
     }
 
@@ -57,14 +61,20 @@ export default function App() {
     refreshHistory();
   }, []);
 
-  function createSession() {
-    fetch(`${API_BASE}/api/sessions`, { method: 'POST' })
+  function createSession(): Promise<string | null> {
+    return fetch(`${API_BASE}/api/sessions`, { method: 'POST' })
       .then((response) => response.json())
       .then((payload) => {
-        setSessionId(payload.session_id);
-        window.localStorage.setItem(SESSION_KEY, payload.session_id);
+        const nextSessionId = String(payload.session_id ?? '');
+        if (!nextSessionId) throw new Error('session_id missing');
+        setSessionId(nextSessionId);
+        window.localStorage.setItem(SESSION_KEY, nextSessionId);
+        return nextSessionId;
       })
-      .catch((error) => setFinalPreview(`创建 session 失败：${String(error)}`));
+      .catch((error) => {
+        setFinalPreview(`创建 session 失败：${String(error)}`);
+        return null;
+      });
   }
 
   function refreshHistory() {
@@ -100,18 +110,31 @@ export default function App() {
   );
 
   function sendMessage(message: string, llmProvider: LLMProvider) {
-    if (!sessionId) return;
+    const activeSessionId = sessionId || window.localStorage.getItem(SESSION_KEY);
+    if (!activeSessionId) {
+      setFinalPreview('正在创建 session，请稍后再试。');
+      createSession();
+      return;
+    }
+
     const numBranches = llmProvider === 'stage_flow' ? 6 : 1;
     setRunning(true);
     setFinalPreview(`任务已发送：${providerLabel(llmProvider)}，branches=${numBranches}。`);
     setSelectedNodeId(null);
-    window.localStorage.removeItem(GRAPH_KEY);
-    window.localStorage.removeItem(SUMMARY_KEY);
+    clearCachedGraph();
     dispatchGraph({ type: 'client_reset' });
 
-    const socket = new WebSocket(wsUrl(`/ws/sessions/${sessionId}`));
+    let socket: WebSocket | null = null;
+    try {
+      socket = new WebSocket(wsUrl(`/ws/sessions/${activeSessionId}`));
+    } catch (error) {
+      setFinalPreview(`WebSocket 初始化失败：${String(error)}`);
+      setRunning(false);
+      return;
+    }
+
     socket.onopen = () => {
-      socket.send(
+      socket?.send(
         JSON.stringify({
           type: 'user_message',
           content: message,
@@ -132,23 +155,25 @@ export default function App() {
         window.localStorage.setItem(GRAPH_KEY, JSON.stringify(payload.graph));
         window.localStorage.setItem(SUMMARY_KEY, JSON.stringify(summary));
         setRunning(false);
-        socket.close();
+        socket?.close();
         refreshHistory();
       }
       if (payload.type === 'error') {
         setFinalPreview(payload.message);
         setRunning(false);
-        socket.close();
-        if (payload.message.includes('未知 session_id')) {
+        socket?.close();
+        if (payload.message.includes('未知 session_id') || payload.message.includes('非法 session_id')) {
           window.localStorage.removeItem(SESSION_KEY);
           createSession();
         }
       }
     };
     socket.onerror = () => {
-      setFinalPreview('WebSocket 连接失败。');
+      setFinalPreview('WebSocket 连接失败。已重建 session，请再次发送任务。');
       setRunning(false);
-      socket.close();
+      socket?.close();
+      window.localStorage.removeItem(SESSION_KEY);
+      createSession();
     };
   }
 
@@ -175,6 +200,19 @@ export default function App() {
       </div>
     </main>
   );
+}
+
+function migrateLocalStorage() {
+  const version = window.localStorage.getItem(STORAGE_VERSION_KEY);
+  if (version === STORAGE_VERSION) return;
+  window.localStorage.removeItem(SESSION_KEY);
+  clearCachedGraph();
+  window.localStorage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION);
+}
+
+function clearCachedGraph() {
+  window.localStorage.removeItem(GRAPH_KEY);
+  window.localStorage.removeItem(SUMMARY_KEY);
 }
 
 function providerLabel(provider: LLMProvider) {
