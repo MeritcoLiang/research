@@ -1,8 +1,9 @@
 """SecondaryMarketAnalyst Stage flow with LLM-implemented Operators.
 
-This keeps the documented expert handoff, context, rubric, and six-subtask
-problem decomposition, then uses LLM Operators for generation, normalization,
-scoring, improvement, aggregation, and validation.
+The LLM path starts with an instruction-driven ExpertRouter handoff. The router
+invokes a target-specific handoff tool that transfers control to
+SecondaryMarketAnalyst; the specialist then runs the documented context, rubric,
+problem decomposition, and downstream LLM Operators.
 """
 
 from __future__ import annotations
@@ -18,11 +19,11 @@ from ..llm_operators import (
 from ..model_client import ModelClient
 from ..operators import Operator
 from ..prompter import DefaultPipelinePrompter, Prompter
+from .handoff_router import SecondaryMarketLLMExpertRouterOperator
 from .secondary_market import (
     SecondaryMarketContextBuilderOperator,
     SecondaryMarketProblemDecomposerOperator,
     SecondaryMarketRubricBuilderOperator,
-    SecondaryMarketTaskIntakeOperator,
 )
 
 
@@ -32,13 +33,14 @@ def build_secondary_market_llm_operators(
 ) -> dict[str, Operator]:
     """Return SecondaryMarketAnalyst Operators with real LLM implementations.
 
-    The first four Operators are deterministic so the UI gets immediate expert
-    handoff and subtask graph updates. LLM calls begin at Candidate Generator.
+    The first Operator is an LLM-backed ExpertRouter. It is intentionally not a
+    direct hard-coded assignment: it receives routing instructions and emits a
+    durable handoff tool invocation before SecondaryMarketAnalyst takes over.
     """
 
     active_prompter = prompter or DefaultPipelinePrompter()
     return {
-        "task_intake": SecondaryMarketTaskIntakeOperator(),
+        "task_intake": SecondaryMarketLLMExpertRouterOperator(model_client),
         "context_builder": SecondaryMarketContextBuilderOperator(),
         "rubric_builder": SecondaryMarketRubricBuilderOperator(),
         "problem_decomposer": SecondaryMarketProblemDecomposerOperator(),
