@@ -58,6 +58,24 @@ def state_to_node(state: ThoughtState) -> GraphNode:
     """Convert one ThoughtState into a frontend graph node with a semantic label."""
 
     score = state.score.overall if state.score else None
+    base_metadata = {
+        "internal_id": state.id,
+        "parent_ids": state.parent_ids,
+        "claim_count": len(state.claims),
+        "critique_count": len(state.critique),
+        **state.metadata,
+    }
+    if state.stage == "root":
+        base_metadata.update(
+            {
+                "operator_kind": "control_node",
+                "operator_input": state.user_query,
+                "operator_output": state.draft,
+                "no_llm_reason": "root 是用户输入节点，不直接调用 LLM。",
+            }
+        )
+    elif "operator_kind" not in base_metadata:
+        base_metadata.setdefault("operator_kind", "llm_operator" if "llm_input" in base_metadata else "operator")
     return GraphNode(
         id=state.id,
         label=_state_label(state),
@@ -65,19 +83,20 @@ def state_to_node(state: ThoughtState) -> GraphNode:
         status=state.status,
         score=score,
         summary=state.summary or (state.draft or "")[:120],
-        metadata={
-            "internal_id": state.id,
-            "parent_ids": state.parent_ids,
-            "claim_count": len(state.claims),
-            "critique_count": len(state.critique),
-            **state.metadata,
-        },
+        metadata=base_metadata,
     )
 
 
 def subtask_to_node(subtask: Subtask, *, parent_id: str | None = None) -> GraphNode:
     """Convert one Subtask into a visible graph node."""
 
+    operator_output = {
+        "id": subtask.id,
+        "question": subtask.question,
+        "required_outputs": subtask.required_outputs,
+        "dependencies": subtask.dependencies,
+        "metadata": subtask.metadata,
+    }
     return GraphNode(
         id=subtask.id,
         label=f"subtask {subtask.id}",
@@ -87,6 +106,10 @@ def subtask_to_node(subtask: Subtask, *, parent_id: str | None = None) -> GraphN
         metadata={
             "internal_id": subtask.id,
             "parent_ids": [parent_id] if parent_id else [],
+            "operator_kind": "control_node",
+            "operator_input": f"ProblemDecomposer 产生的子任务，parent={parent_id or 'root'}。",
+            "operator_output": operator_output,
+            "no_llm_reason": "subtask 节点是 ProblemDecomposer 的结构化输出，不直接调用 LLM。",
             "required_outputs": subtask.required_outputs,
             "dependencies": subtask.dependencies,
             **subtask.metadata,
@@ -102,7 +125,14 @@ def expert_to_node(handoff: dict[str, Any]) -> GraphNode:
         stage="expert_router",
         status="selected",
         summary=str(handoff.get("handoff_reason", "expert selected")),
-        metadata={"internal_id": expert_id, "handoff": handoff},
+        metadata={
+            "internal_id": expert_id,
+            "operator_kind": "control_node",
+            "operator_input": "ExpertRouter 根据用户请求选择专家 profile。",
+            "operator_output": handoff,
+            "no_llm_reason": "expert 节点是 handoff / 路由结果，不直接调用 LLM。",
+            "handoff": handoff,
+        },
     )
 
 
@@ -146,6 +176,15 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
     if event.event_type == "expert_handoff":
         expert_id = str(event.payload.get("expert_id", event.state_id or "expert"))
         metadata = _metadata_with_parent_ids(event)
+        handoff = event.payload.get("handoff", {}) if isinstance(event.payload.get("handoff"), dict) else {}
+        metadata.update(
+            {
+                "operator_kind": "control_node",
+                "operator_input": "ExpertRouter 根据用户请求选择专家 profile。",
+                "operator_output": handoff,
+                "no_llm_reason": "expert 节点是 handoff / 路由结果，不直接调用 LLM。",
+            }
+        )
         return {
             "type": "graph_node_upsert",
             "trace_id": event.trace_id,
@@ -155,7 +194,7 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
                 "stage": "expert_router",
                 "status": "selected",
                 "score": None,
-                "summary": event.payload.get("handoff", {}).get("handoff_reason") if isinstance(event.payload.get("handoff"), dict) else None,
+                "summary": handoff.get("handoff_reason") if isinstance(handoff, dict) else None,
                 "metadata": metadata,
             },
         }
@@ -163,6 +202,18 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
     if event.event_type == "subtask_created":
         subtask_id = str(event.payload.get("subtask_id", event.state_id or "subtask"))
         metadata = _metadata_with_parent_ids(event)
+        metadata.update(
+            {
+                "operator_kind": "control_node",
+                "operator_input": f"ProblemDecomposer 产生的子任务，parent={event.parent_ids[0] if event.parent_ids else 'root'}。",
+                "operator_output": {
+                    "id": subtask_id,
+                    "question": event.payload.get("question"),
+                    "metadata": event.payload.get("metadata", {}),
+                },
+                "no_llm_reason": "subtask 节点是 ProblemDecomposer 的结构化输出，不直接调用 LLM。",
+            }
+        )
         return {
             "type": "graph_node_upsert",
             "trace_id": event.trace_id,
@@ -180,6 +231,15 @@ def event_to_graph_delta(event: TraceEvent) -> dict[str, Any]:
     if event.event_type == "state_created" and event.state_id:
         label = _event_state_label(event)
         metadata = _metadata_with_parent_ids(event)
+        if event.stage == "root":
+            metadata.update(
+                {
+                    "operator_kind": "control_node",
+                    "operator_input": event.payload.get("draft_preview"),
+                    "operator_output": event.payload.get("draft_preview"),
+                    "no_llm_reason": "root 是用户输入节点，不直接调用 LLM。",
+                }
+            )
         return {
             "type": "graph_node_upsert",
             "trace_id": event.trace_id,
