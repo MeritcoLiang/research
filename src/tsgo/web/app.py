@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 try:
     from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-except ImportError as exc:  # pragma: no cover - only hit when web extras are missing
+except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Web UI requires optional dependency: pip install -e '.[web]'") from exc
 
 from ..graph import event_to_graph_delta, trace_to_graph
@@ -25,6 +26,7 @@ from .sessions import SessionManager
 
 app = FastAPI(title="Thought-State Graph Orchestration UI", version="0.3.0")
 manager = SessionManager()
+HEARTBEAT_INTERVAL_SECONDS = 5.0
 
 
 @app.post("/api/sessions", response_model=CreateSessionResponse)
@@ -108,7 +110,6 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
 
             queue: asyncio.Queue = asyncio.Queue()
             sink = AsyncQueueEventSink(queue=queue, loop=asyncio.get_running_loop())
-
             task = asyncio.create_task(
                 asyncio.to_thread(
                     manager.handle_user_message,
@@ -120,20 +121,48 @@ async def websocket_session(websocket: WebSocket, session_id: str) -> None:
                 )
             )
 
+            active_stage = "starting"
+            active_event_type = "run_started"
+            last_activity = time.monotonic()
             while True:
                 if task.done() and queue.empty():
                     break
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=0.1)
+                    event = await asyncio.wait_for(queue.get(), timeout=0.25)
                 except asyncio.TimeoutError:
+                    now = time.monotonic()
+                    if now - last_activity >= HEARTBEAT_INTERVAL_SECONDS:
+                        await websocket.send_json(
+                            {
+                                "type": "run_heartbeat",
+                                "stage": active_stage,
+                                "last_event_type": active_event_type,
+                                "waiting_seconds": round(now - last_activity, 1),
+                                "message": f"仍在执行 {active_stage}，等待 Operator / LLM 返回。",
+                            }
+                        )
+                        last_activity = now
                     continue
+
+                active_stage = str(event.stage or active_stage)
+                active_event_type = event.event_type
+                last_activity = time.monotonic()
                 await websocket.send_json({"type": "trace_event", "event": event.to_dict()})
-                await websocket.send_json(event_to_graph_delta(event))
+                delta = event_to_graph_delta(event)
+                if delta.get("type") != "event":
+                    await websocket.send_json(delta)
 
             try:
                 trace = task.result()
             except Exception as exc:
-                await websocket.send_json({"type": "error", "message": str(exc)})
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": str(exc),
+                        "stage": active_stage,
+                        "last_event_type": active_event_type,
+                    }
+                )
                 continue
 
             graph = trace_to_graph(trace).to_dict()
