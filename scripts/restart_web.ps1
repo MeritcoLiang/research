@@ -104,6 +104,7 @@ $FrontendLog = Join-Path $LogDir "frontend.log"
 $FrontendErrorLog = Join-Path $LogDir "frontend.error.log"
 $BackendDepsStamp = Join-Path $CacheDir "backend-deps.sha256"
 $FrontendDepsStamp = Join-Path $CacheDir "frontend-deps.sha256"
+$BackendProbeFile = Join-Path $CacheDir "backend-import-probe.py"
 $BackendHealthUrl = "http://${BackendCheckHost}:${BackendPort}${BackendHealthPath}"
 $FrontendHealthUrl = "http://${FrontendCheckHost}:${FrontendPort}${FrontendHealthPath}"
 
@@ -190,8 +191,8 @@ function Write-Stamp {
 
 function Get-BackendFingerprint {
     $pyproject = Join-Path $RootDir "pyproject.toml"
-    $pythonVersion = (& $PythonBin --version 2>&1 | Out-String).Trim()
-    $pipVersion = (& $PythonBin -m pip --version 2>&1 | Out-String).Trim()
+    $pythonVersion = (& $script:PythonBin --version 2>&1 | Out-String).Trim()
+    $pipVersion = (& $script:PythonBin -m pip --version 2>&1 | Out-String).Trim()
     return Get-Sha256Text ((Get-Content $pyproject -Raw) + "`n$pythonVersion`n$pipVersion`n$BackendExtras")
 }
 
@@ -199,7 +200,7 @@ function Get-FrontendFingerprint {
     $lockFile = Join-Path $WebDir "package-lock.json"
     $packageFile = Join-Path $WebDir "package.json"
     $dependencyFile = if (Test-Path $lockFile) { $lockFile } else { $packageFile }
-    $npmVersion = (& $NpmBin --version 2>&1 | Out-String).Trim()
+    $npmVersion = (& $script:NpmBin --version 2>&1 | Out-String).Trim()
     return Get-Sha256Text ((Get-Content $dependencyFile -Raw) + "`n$npmVersion")
 }
 
@@ -214,10 +215,7 @@ function Get-BackendImportTargets {
     return @($modules | Select-Object -Unique)
 }
 
-function Test-BackendImports {
-    param([switch]$Quiet)
-
-    $targets = Get-BackendImportTargets
+function Write-BackendImportProbe {
     $code = @'
 import importlib
 import sys
@@ -237,11 +235,19 @@ for name in dict.fromkeys(sys.argv[1:]):
         traceback.print_exc()
 raise SystemExit(1 if failed else 0)
 '@
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($BackendProbeFile, $code, $utf8NoBom)
+}
 
+function Test-BackendImports {
+    param([switch]$Quiet)
+
+    $targets = Get-BackendImportTargets
+    Write-BackendImportProbe
     $oldPythonPath = $env:PYTHONPATH
     $env:PYTHONPATH = if ($oldPythonPath) { (Join-Path $RootDir "src") + ";" + $oldPythonPath } else { Join-Path $RootDir "src" }
     try {
-        $output = & $script:PythonBin -c $code @targets 2>&1
+        $output = & $script:PythonBin $BackendProbeFile @targets 2>&1
         $success = $LASTEXITCODE -eq 0
         if (-not $Quiet) {
             foreach ($line in $output) {
@@ -625,10 +631,11 @@ function Show-Usage {
 默认 restart：
   1. Git 使用 HTTP/1.1，最多重试 3 次；auto 模式失败后继续使用本地代码
   2. 自动安装/校验后端 extras：web,azure,deepseek,aidc
-  3. 导入失败时逐模块输出 [FAIL] 和完整 Python traceback
-  4. 自动安装/校验 npm 依赖并执行 npm run build
-  5. 只停止本仓库旧 Uvicorn/Vite 进程
-  6. 启动后端和前端并执行 HTTP 健康检查
+  3. 导入探针写入临时 .py 文件，避免 Windows PowerShell 5.1 破坏 python -c 引号
+  4. 导入失败时逐模块输出 [FAIL] 和完整 Python traceback
+  5. 自动安装/校验 npm 依赖并执行 npm run build
+  6. 只停止本仓库旧 Uvicorn/Vite 进程
+  7. 启动后端和前端并执行 HTTP 健康检查
 
 开关：
   -SkipGitPull     跳过 git pull
