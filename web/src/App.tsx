@@ -145,12 +145,14 @@ export default function App() {
   function sendMessage(message: string, llmProvider: LLMProvider) {
     if (!sessionId) return;
     const numBranches = llmProvider === 'stage_flow' ? 6 : 1;
+    const pendingHistoryId = historyIdForRun(sessionId, llmProvider);
+
     setRunning(true);
     setFinalPreview(`任务已发送：${providerLabel(llmProvider)}，branches=${numBranches}。`);
     setSelectedNodeId(null);
     removeStorageItem(GRAPH_KEY);
     removeStorageItem(SUMMARY_KEY);
-    syncUrlState({ sessionId, clearHistoryId: true });
+    syncUrlState({ sessionId, historyId: pendingHistoryId });
     dispatchGraph({ type: 'client_reset' });
 
     activeSocketRef.current?.close();
@@ -177,11 +179,11 @@ export default function App() {
         }
         if (payload.type === 'pipeline_completed') {
           const summary = payload.summary as Record<string, unknown>;
-          const historyId = historyIdForRun(sessionId, llmProvider);
+          const completedHistoryId = historyIdForRun(sessionId, llmProvider);
           setFinalPreview(String(summary.final_draft_preview ?? ''));
           writeJsonStorage(GRAPH_KEY, payload.graph);
           writeJsonStorage(SUMMARY_KEY, summary);
-          syncUrlState({ sessionId, historyId });
+          syncUrlState({ sessionId, historyId: completedHistoryId });
           setRunning(false);
           socket.close();
           refreshHistory();
@@ -191,16 +193,18 @@ export default function App() {
           setRunning(false);
           socket.close();
           if (payload.message.includes('未知 session_id') || payload.message.includes('非法 session_id')) {
-            const currentHistoryId = readUrlState().historyId;
             removeStorageItem(SESSION_KEY);
-            syncUrlState({ clearSessionId: true, historyId: currentHistoryId });
-            createSession({ historyId: currentHistoryId });
+            syncUrlState({ clearSessionId: true, clearHistoryId: true });
+            createSession();
+          } else {
+            syncUrlState({ sessionId, clearHistoryId: true });
           }
         }
       } catch (error) {
         setFinalPreview(`收到无法解析的服务端消息：${String(error)}`);
         setRunning(false);
         socket.close();
+        syncUrlState({ sessionId, clearHistoryId: true });
       }
     };
 
@@ -208,6 +212,7 @@ export default function App() {
       setFinalPreview('WebSocket 连接失败。');
       setRunning(false);
       socket.close();
+      syncUrlState({ sessionId, clearHistoryId: true });
     };
 
     socket.onclose = () => {
