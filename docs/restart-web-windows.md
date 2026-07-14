@@ -1,6 +1,6 @@
 # Windows PowerShell 一键更新与重启 Web UI
 
-`scripts/restart_web.ps1` 是 `scripts/restart_web.sh` 的 Windows 版本。默认的 `restart` 会把代码更新、依赖准备、前端构建、旧进程回收和健康检查放在一个命令中。
+`scripts/restart_web.ps1` 是 `scripts/restart_web.sh` 的 Windows 版本。默认 `restart` 会依次完成代码更新、依赖准备、前端构建、旧进程回收、服务启动和 HTTP 健康检查。
 
 ## 最常用命令
 
@@ -16,7 +16,7 @@ PowerShell 7：
 pwsh -File .\scripts\restart_web.ps1 restart
 ```
 
-`restart` 可以省略：
+在已经允许本地脚本执行的 PowerShell 中，也可以直接运行：
 
 ```powershell
 .\scripts\restart_web.ps1
@@ -25,8 +25,7 @@ pwsh -File .\scripts\restart_web.ps1 restart
 默认流程：
 
 ```text
-检查 Git checkout 和当前分支
-  -> 检查未提交的已跟踪修改
+检查 Git checkout、当前分支和已跟踪修改
   -> git fetch --prune origin
   -> git pull --ff-only origin <当前分支>
   -> 检查 pyproject/Python/pip/extras 指纹
@@ -35,13 +34,14 @@ pwsh -File .\scripts\restart_web.ps1 restart
   -> 必要时 npm ci / npm install
   -> npm run build
   -> 停止本仓库旧 Uvicorn/Vite 进程
-  -> 启动后端和前端
+  -> 启动 Uvicorn
+  -> 使用 node.exe 直接启动 Vite
   -> GET /openapi.json
   -> GET /
   -> status=running health=ready
 ```
 
-代码更新、依赖安装和前端构建全部发生在停止旧服务之前。因此 `git pull`、pip、npm 或 TypeScript 构建失败时，原来正在工作的 Web UI 不会先被关闭。
+`git pull`、依赖安装和前端构建全部发生在停止旧服务之前。因此更新、pip、npm 或 TypeScript 构建失败时，原来正在工作的 Web UI 不会先被关闭。
 
 ## Git pull 行为
 
@@ -60,17 +60,17 @@ git fetch --prune origin
 git pull --ff-only origin <当前分支>
 ```
 
-使用 `--ff-only` 是为了避免部署服务器上意外生成 merge commit。
+使用 `--ff-only` 可以防止部署机器意外生成 merge commit。
 
-脚本会在以下情况停止，并且不会关闭旧服务：
+脚本会在以下情况停止，而且不会关闭旧服务：
 
 - 当前处于 detached HEAD；
 - 当前分支与显式设置的 `GIT_BRANCH` 不一致；
 - 存在未提交的已跟踪修改；
-- fetch 或 pull 失败；
-- 远端历史不能 fast-forward。
+- `git fetch` 或 `git pull` 失败；
+- 当前分支无法 fast-forward 到远端。
 
-未跟踪文件不会单独阻止 pull，但如果它们会覆盖远端文件，Git 自身仍会拒绝更新。
+未跟踪文件不会单独阻止更新，但它们会覆盖远端文件时，Git 自身仍会拒绝 pull。
 
 临时跳过更新：
 
@@ -78,14 +78,14 @@ git pull --ff-only origin <当前分支>
 .\scripts\restart_web.ps1 restart -SkipGitPull
 ```
 
-或使用环境变量：
+或：
 
 ```powershell
 $env:GIT_PULL = "never"
 .\scripts\restart_web.ps1 restart
 ```
 
-要求必须处于 `main` 并从 `origin/main` 更新：
+部署机器固定使用 `origin/main`：
 
 ```powershell
 $env:GIT_REMOTE = "origin"
@@ -101,42 +101,50 @@ Remove-Item Env:GIT_REMOTE -ErrorAction SilentlyContinue
 Remove-Item Env:GIT_BRANCH -ErrorAction SilentlyContinue
 ```
 
-## 动作
+## 支持的动作
 
 ```powershell
 .\scripts\restart_web.ps1 restart  # 更新代码、准备依赖、构建并重启
 .\scripts\restart_web.ps1 start    # 更新代码、准备依赖、构建并启动
 .\scripts\restart_web.ps1 stop     # 停止前后端
-.\scripts\restart_web.ps1 status   # PID、端口、HTTP health
+.\scripts\restart_web.ps1 status   # 显示 PID、端口和 HTTP health
 .\scripts\restart_web.ps1 logs     # 持续查看 stdout/stderr
 .\scripts\restart_web.ps1 install  # 更新代码并安装/检查依赖
 .\scripts\restart_web.ps1 doctor   # 不修改环境，只做诊断
 .\scripts\restart_web.ps1 help
 ```
 
+命令行开关：
+
+```text
+-SkipGitPull     本次跳过 git pull
+-ForceInstall    本次强制安装 Python/npm 依赖
+-ForceKillPorts  明确允许终止无关端口进程
+```
+
 ## 后端依赖
 
-默认 extras：
+默认安装并验证：
 
 ```text
 web,azure,deepseek,aidc
 ```
 
-等价安装命令：
+等价命令：
 
 ```powershell
 python -m pip install -e ".[web,azure,deepseek,aidc]"
 ```
 
-控制安装策略：
+安装策略：
 
 ```powershell
-$env:BACKEND_INSTALL = "auto"    # 默认
+$env:BACKEND_INSTALL = "auto"    # 默认，根据指纹和导入检查判断
 $env:BACKEND_INSTALL = "always"  # 每次重新安装
 $env:BACKEND_INSTALL = "never"   # 只检查，不安装
 ```
 
-本次强制安装：
+本次强制安装全部依赖：
 
 ```powershell
 .\scripts\restart_web.ps1 restart -ForceInstall
@@ -149,9 +157,9 @@ $env:BACKEND_EXTRAS = "web"
 .\scripts\restart_web.ps1 restart
 ```
 
-## 前端依赖
+## 前端依赖和 Vite 启动
 
-默认 `NPM_INSTALL=auto`，会检查：
+`NPM_INSTALL=auto` 会检查：
 
 - `web\node_modules` 是否存在；
 - `npm ls --depth=0` 是否通过；
@@ -164,6 +172,14 @@ $env:BACKEND_EXTRAS = "web"
 $env:NPM_INSTALL = "always"
 .\scripts\restart_web.ps1 restart
 ```
+
+依赖和构建仍由 npm 完成。服务启动阶段则直接执行：
+
+```text
+node.exe web\node_modules\vite\bin\vite.js
+```
+
+这样可以避免 Windows 上通过 `Start-Process` 启动 `npm.cmd` 并重定向日志时的兼容问题。
 
 ## 健康检查
 
@@ -189,9 +205,11 @@ $env:STARTUP_TIMEOUT = "60"
 前端     status=running health=ready     pid=5678     port=5173
 ```
 
+前后端任一启动失败，脚本都会清理已经启动的另一端，并输出 stdout/stderr 日志位置。
+
 ## 端口安全
 
-脚本通过 PID 文件、进程命令行和仓库路径识别自己的 Uvicorn/Vite 进程。发现无关服务占用 8000 或 5173 时默认停止操作，不会直接杀进程。
+脚本通过 PID 文件、进程命令行和仓库路径识别自己的 Uvicorn/Vite 进程。发现无关服务占用 8000 或 5173 时默认停止操作，不会直接终止该进程。
 
 只在明确确认端口可以被清理时使用：
 
@@ -208,9 +226,9 @@ $env:FORCE_KILL_PORTS = "1"
 
 不要长期设置 `FORCE_KILL_PORTS=1`。
 
-## 日志与运行文件
+## 日志和运行文件
 
-默认目录：
+默认位置：
 
 ```text
 %LOCALAPPDATA%\tsgo-web\backend.pid
@@ -219,7 +237,8 @@ $env:FORCE_KILL_PORTS = "1"
 %LOCALAPPDATA%\tsgo-web\logs\backend.error.log
 %LOCALAPPDATA%\tsgo-web\logs\frontend.log
 %LOCALAPPDATA%\tsgo-web\logs\frontend.error.log
-%LOCALAPPDATA%\tsgo-web\cache\*.sha256
+%LOCALAPPDATA%\tsgo-web\cache\backend-deps.sha256
+%LOCALAPPDATA%\tsgo-web\cache\frontend-deps.sha256
 ```
 
 可覆盖：
@@ -230,17 +249,18 @@ $env:TSGO_LOG_DIR = "D:\logs\tsgo-web"
 $env:TSGO_CACHE_DIR = "D:\cache\tsgo-web"
 ```
 
-## Python、npm 和 Git 路径
+## Python、npm、Node 和 Git 路径
 
 默认：
 
 ```text
 PYTHON_BIN=python
 NPM_BIN=npm.cmd
+NODE_BIN=node.exe
 GIT_BIN=git.exe
 ```
 
-存在多个 Python 时，可以指定虚拟环境：
+存在多个 Python 时可以指定虚拟环境：
 
 ```powershell
 $env:PYTHON_BIN = "$PWD\.venv\Scripts\python.exe"
@@ -263,16 +283,9 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ## 排查
 
-先执行：
-
 ```powershell
 .\scripts\restart_web.ps1 doctor
 .\scripts\restart_web.ps1 status
-```
-
-查看日志：
-
-```powershell
 .\scripts\restart_web.ps1 logs
 ```
 
