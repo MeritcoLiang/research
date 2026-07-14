@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +50,7 @@ class PipelineConfig:
 
 
 class PipelineController:
-    """Fixed-stage orchestrator with optional realtime event emission."""
+    """Fixed-stage orchestrator with realtime events and durable checkpoints."""
 
     def __init__(
         self,
@@ -69,6 +70,7 @@ class PipelineController:
 
     def run(self, user_query: str) -> Trace:
         trace = Trace(id=new_state_id("trace"), user_query=user_query)
+        trace.metadata["run_status"] = "running"
         self._emit(trace, "pipeline_started", payload={"user_query": user_query})
 
         root = ThoughtState(
@@ -81,18 +83,26 @@ class PipelineController:
         )
         trace.add_state(root)
         self._emit_state_event(trace, "state_created", root)
+        self._persist_checkpoint(trace, stage="root", status="completed")
 
         active_states = [root]
         for stage_name in PIPELINE_STAGE_ORDER:
             if stage_name == "trace_logger":
                 continue
             operator = self.operators[stage_name]
+            trace.metadata["current_stage"] = stage_name
+            trace.metadata["current_operator"] = operator.__class__.__name__
+            trace.metadata["stage_started_at"] = _utc_now()
             self._emit(
                 trace,
                 "stage_started",
                 stage=stage_name,
-                payload={"active_state_ids": [state.id for state in active_states]},
+                payload={
+                    "active_state_ids": [state.id for state in active_states],
+                    "operator": operator.__class__.__name__,
+                },
             )
+            self._persist_checkpoint(trace, stage=stage_name, status="started")
             try:
                 result = operator.run(
                     user_query=user_query,
@@ -103,19 +113,32 @@ class PipelineController:
                     config=self.config,
                 )
             except Exception as exc:
+                trace.metadata["run_status"] = "error"
+                trace.metadata["pipeline_error"] = {
+                    "stage": stage_name,
+                    "operator": operator.__class__.__name__,
+                    "error": str(exc),
+                    "timestamp": _utc_now(),
+                }
                 self._emit(
                     trace,
                     "pipeline_error",
                     stage=stage_name,
                     payload={"error": str(exc), "operator": operator.__class__.__name__},
                 )
+                self._persist_checkpoint(trace, stage=stage_name, status="error")
                 raise
+
             self._record_result(trace, stage_name, result)
+            trace.metadata["stage_completed_at"] = _utc_now()
+            self._persist_checkpoint(trace, stage=stage_name, status="completed")
             if result.new_states:
                 active_states = result.new_states
 
         if active_states:
             trace.final_state_id = active_states[-1].id
+        trace.metadata["run_status"] = "completed"
+        trace.metadata["current_stage"] = "pipeline_completed"
         self._emit(
             trace,
             "pipeline_completed",
@@ -149,7 +172,6 @@ class PipelineController:
 
         if result.metadata.get("expert_handoff"):
             self._emit_expert_handoff(trace, result.metadata["expert_handoff"])
-
         if stage_name == "problem_decomposer":
             self._emit_subtask_events(trace)
 
@@ -170,6 +192,28 @@ class PipelineController:
                 "errors": result.errors,
                 "metadata": result.metadata,
             },
+        )
+
+    def _trace_path(self) -> Path:
+        return Path(str(self.config.metadata.get("trace_path", "traces/pipeline_traces.jsonl")))
+
+    def _persist_checkpoint(self, trace: Trace, *, stage: str, status: str) -> None:
+        """Append a recoverable trace snapshot before and after every stage."""
+        if not self.config.enable_trace_logging:
+            return
+        trace_path = self._trace_path()
+        trace.metadata["trace_path"] = str(trace_path)
+        trace.metadata["checkpoint"] = {
+            "stage": stage,
+            "status": status,
+            "timestamp": _utc_now(),
+        }
+        JsonlTraceSink(trace_path).write(trace)
+        self._emit(
+            trace,
+            "trace_checkpointed",
+            stage=stage,
+            payload={"trace_path": str(trace_path), "checkpoint_status": status},
         )
 
     def _emit_expert_handoff(self, trace: Trace, handoff: dict[str, Any]) -> None:
@@ -201,19 +245,19 @@ class PipelineController:
     def _persist_final_trace(self, trace: Trace) -> None:
         if not self.config.enable_trace_logging:
             return
+        trace_path = self._trace_path()
         self._emit(
             trace,
             "stage_started",
             stage="trace_logger",
             payload={"active_state_ids": [trace.final_state_id] if trace.final_state_id else []},
         )
-        trace_path = Path(str(self.config.metadata.get("trace_path", "traces/pipeline_traces.jsonl")))
         trace.metadata["trace_path"] = str(trace_path)
         trace.metadata.setdefault("stage_logs", {})["trace_logger"] = {
             "ok": True,
             "logs": [f"trace 已写入：{trace_path}"],
             "errors": [],
-            "metadata": {"trace_path": str(trace_path), "deferred_until_pipeline_completed": True},
+            "metadata": {"trace_path": str(trace_path), "checkpointed_during_run": True},
         }
         self._emit(
             trace,
@@ -224,15 +268,10 @@ class PipelineController:
                 "new_state_ids": [],
                 "logs": [f"trace 已写入：{trace_path}"],
                 "errors": [],
-                "metadata": {"trace_path": str(trace_path), "deferred_until_pipeline_completed": True},
+                "metadata": {"trace_path": str(trace_path), "checkpointed_during_run": True},
             },
         )
-        self._emit(
-            trace,
-            "trace_persisted",
-            stage="trace_logger",
-            payload={"trace_path": str(trace_path)},
-        )
+        self._emit(trace, "trace_persisted", stage="trace_logger", payload={"trace_path": str(trace_path)})
         JsonlTraceSink(trace_path).write(trace)
 
     def _emit_subtask_events(self, trace: Trace) -> None:
@@ -305,3 +344,7 @@ class PipelineController:
         )
         trace.metadata.setdefault("events", []).append(event.to_dict())
         self.event_sink.emit(event)
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
