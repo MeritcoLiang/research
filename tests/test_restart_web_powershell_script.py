@@ -15,8 +15,14 @@ def _powershell() -> str | None:
     return shutil.which("pwsh") or shutil.which("powershell")
 
 
+def test_windows_restart_script_is_utf8_with_bom() -> None:
+    raw = SCRIPT.read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+    assert raw.decode("utf-8-sig").startswith("[CmdletBinding()]")
+
+
 def test_windows_restart_script_contract() -> None:
-    source = SCRIPT.read_text(encoding="utf-8")
+    source = SCRIPT.read_text(encoding="utf-8-sig")
     assert 'GIT_PULL" "auto"' in source
     assert "git pull --ff-only" in source
     assert "--porcelain --untracked-files=no" in source
@@ -37,7 +43,7 @@ def test_windows_restart_script_contract() -> None:
 
 
 def test_windows_git_update_retries_and_can_continue_locally() -> None:
-    source = SCRIPT.read_text(encoding="utf-8")
+    source = SCRIPT.read_text(encoding="utf-8-sig")
     for text in [
         'GIT_RETRIES" "3"',
         'GIT_RETRY_DELAY" "3"',
@@ -51,7 +57,7 @@ def test_windows_git_update_retries_and_can_continue_locally() -> None:
 
 
 def test_windows_backend_import_failure_is_actionable() -> None:
-    source = SCRIPT.read_text(encoding="utf-8")
+    source = SCRIPT.read_text(encoding="utf-8-sig")
     for text in [
         "Get-BackendImportTargets",
         "python={sys.executable}",
@@ -66,7 +72,7 @@ def test_windows_backend_import_failure_is_actionable() -> None:
 
 
 def test_windows_restart_help_is_documented() -> None:
-    source = SCRIPT.read_text(encoding="utf-8")
+    source = SCRIPT.read_text(encoding="utf-8-sig")
     for text in [
         "powershell -ExecutionPolicy Bypass",
         "git fetch --prune",
