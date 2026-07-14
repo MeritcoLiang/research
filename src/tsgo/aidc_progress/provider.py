@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
 
 from ..env import load_env_file
 
@@ -15,9 +15,9 @@ DEFAULT_AZURE_OPENAI_BASE_PATH = "/openai/v1/"
 
 @dataclass(frozen=True, slots=True)
 class ProviderSettings:
-    provider: str
+    provider: Literal["openai", "azure"]
     model_name: str
-    search_context_size: str
+    search_context_size: Literal["low", "medium", "high"]
     max_turns: int
     tracing_disabled: bool
 
@@ -58,9 +58,9 @@ class ProviderSettings:
             raise RuntimeError("AIDC_MAX_TURNS 必须至少为 2。")
 
         return cls(
-            provider=resolved_provider,
+            provider=cast(Literal["openai", "azure"], resolved_provider),
             model_name=resolved_model,
-            search_context_size=context_size,
+            search_context_size=cast(Literal["low", "medium", "high"], context_size),
             max_turns=resolved_turns,
             tracing_disabled=_env_bool("AIDC_DISABLE_TRACING", default=True),
         )
