@@ -27,6 +27,9 @@ traces/*.jsonl
 traces/**/*.json
 traces/**/*.jsonl
 
+# Generated research reports
+reports/aidc/
+
 # Local files
 .env
 .env.*

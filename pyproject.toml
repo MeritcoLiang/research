@@ -34,6 +34,16 @@ llm = [
   "azure-identity>=1.16.0",
   "python-dotenv>=1.0.0"
 ]
+aidc = [
+  "openai-agents>=0.18.2,<0.19.0",
+  "openai>=2.25.0",
+  "azure-identity>=1.16.0",
+  "python-dotenv>=1.0.0",
+  "pydantic>=2.10.0"
+]
+
+[project.scripts]
+aidc-progress = "tsgo.aidc_progress.cli:main"
 
 [tool.setuptools.package-dir]
 "" = "src"
