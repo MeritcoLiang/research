@@ -23,8 +23,9 @@ def test_windows_restart_script_contract() -> None:
     assert "-SkipGitPull" in source
     assert "web,azure,deepseek,aidc" in source
     assert "Invoke-WebRequest" in source
-    assert "Start-Process $Node" in source
+    assert "Start-Process $NodeBin" in source
     assert "node_modules\\vite\\bin\\vite.js" in source
+    assert "$quotedVitePath = '\"' + $vitePath + '\"'" in source
     assert "-ForceKillPorts" in source
 
     restart_block = source.split("function Restart-Services {", maxsplit=1)[1].split(
