@@ -64,6 +64,8 @@ $FrontendPort = [int](Env "FRONTEND_PORT" "5173")
 $BackendCheckHost = Env "BACKEND_CHECK_HOST" "127.0.0.1"
 $FrontendCheckHost = Env "FRONTEND_CHECK_HOST" "127.0.0.1"
 $StartupTimeout = [int](Env "STARTUP_TIMEOUT" "45")
+$BackendHealthPath = Env "BACKEND_HEALTH_PATH" "/openapi.json"
+$FrontendHealthPath = Env "FRONTEND_HEALTH_PATH" "/"
 $BackendExtras = ((Env "BACKEND_EXTRAS" "web,azure,deepseek,aidc") -replace "\s", "").ToLowerInvariant()
 $BackendInstall = if ($ForceInstall) { "always" } else { Env "BACKEND_INSTALL" "auto" }
 $NpmInstall = if ($ForceInstall) { "always" } else { Env "NPM_INSTALL" "auto" }
@@ -82,8 +84,8 @@ $FrontendLog = Join-Path $LogDir "frontend.log"
 $FrontendErr = Join-Path $LogDir "frontend.error.log"
 $BackendStamp = Join-Path $CacheDir "backend-deps.stamp"
 $FrontendStamp = Join-Path $CacheDir "frontend-deps.stamp"
-$BackendUrl = "http://${BackendCheckHost}:${BackendPort}/openapi.json"
-$FrontendUrl = "http://${FrontendCheckHost}:${FrontendPort}/"
+$BackendUrl = "http://${BackendCheckHost}:${BackendPort}${BackendHealthPath}"
+$FrontendUrl = "http://${FrontendCheckHost}:${FrontendPort}${FrontendHealthPath}"
 
 @($RunDir, $LogDir, $CacheDir) | ForEach-Object {
     New-Item -ItemType Directory -Path $_ -Force | Out-Null
@@ -281,12 +283,12 @@ function Stop-Services {
 
 function Start-Backend {
     Set-Content $BackendLog ""; Set-Content $BackendErr ""
-    $args = @("-m", "uvicorn", "tsgo.web.app:app", "--host", $BackendHost, "--port", "$BackendPort")
-    if ($Reload) { $args += "--reload" }
+    $backendArgs = @("-m", "uvicorn", "tsgo.web.app:app", "--host", $BackendHost, "--port", "$BackendPort")
+    if ($Reload) { $backendArgs += "--reload" }
     $old = $env:PYTHONPATH
     $env:PYTHONPATH = if ($old) { (Join-Path $Root "src") + ";" + $old } else { Join-Path $Root "src" }
     try {
-        $process = Start-Process $Python -ArgumentList $args -WorkingDirectory $Root -NoNewWindow -PassThru `
+        $process = Start-Process $Python -ArgumentList $backendArgs -WorkingDirectory $Root -NoNewWindow -PassThru `
             -RedirectStandardOutput $BackendLog -RedirectStandardError $BackendErr
         Set-Content $BackendPid $process.Id -Encoding ASCII
     }
@@ -297,7 +299,8 @@ function Start-Frontend {
     Set-Content $FrontendLog ""; Set-Content $FrontendErr ""
     $vite = Join-Path $Web "node_modules\vite\bin\vite.js"
     if (-not (Test-Path $vite)) { throw "缺少 Vite：$vite" }
-    $process = Start-Process $Node -ArgumentList @($vite, "--host", $FrontendHost, "--port", "$FrontendPort") `
+    $viteArg = '`"' + $vite + '`"'
+    $process = Start-Process $Node -ArgumentList @($viteArg, "--host", $FrontendHost, "--port", "$FrontendPort") `
         -WorkingDirectory $Web -NoNewWindow -PassThru -RedirectStandardOutput $FrontendLog -RedirectStandardError $FrontendErr
     Set-Content $FrontendPid $process.Id -Encoding ASCII
 }
@@ -324,7 +327,8 @@ function Wait-Ready([string]$Name, [string]$Url, [string]$PidFile) {
 function Service-Status([string]$Name, [string]$PidFile, [string]$Expected, [string]$Url, [int]$Port) {
     $id = Read-Pid $PidFile
     $status = "stopped"; $health = "unavailable"
-    if ($null -ne $id -and (Alive $id) -and (Command-Line $id).Contains($Expected)) {
+    $line = if ($null -ne $id) { Command-Line $id } else { "" }
+    if ($null -ne $id -and (Alive $id) -and $line.IndexOf($Expected, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
         $status = "running"; $health = if (Http-Ready $Url) { "ready" } else { "starting" }
     }
     $pidText = if ($null -eq $id) { "none" } else { "$id" }
@@ -361,8 +365,14 @@ function Prepare-Runtime {
 function Start-Services {
     Release-Port "前端" $FrontendPort "vite"
     Release-Port "后端" $BackendPort "uvicorn tsgo.web.app:app"
-    Start-Backend
-    Start-Frontend
+    try {
+        Start-Backend
+        Start-Frontend
+    }
+    catch {
+        Stop-Services
+        throw
+    }
     if (-not (Wait-Ready "后端" $BackendUrl $BackendPid)) { Stop-Services; throw "后端启动失败，查看 $BackendErr" }
     if (-not (Wait-Ready "前端" $FrontendUrl $FrontendPid)) { Stop-Services; throw "前端启动失败，查看 $FrontendErr" }
     Status
@@ -423,6 +433,9 @@ function Usage {
   BACKEND_EXTRAS=web,azure,deepseek,aidc
   BACKEND_PORT=8000
   FRONTEND_PORT=5173
+  BACKEND_HEALTH_PATH=/openapi.json
+  FRONTEND_HEALTH_PATH=/
+  STARTUP_TIMEOUT=45
 "@ | Write-Host
 }
 
