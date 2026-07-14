@@ -1,9 +1,10 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Position = 0)]
     [ValidateSet("restart", "start", "stop", "status", "logs", "install", "doctor", "help")]
     [string]$Action = "restart",
     [switch]$SkipGitPull,
+    [switch]$RequireGitPull,
     [switch]$ForceInstall,
     [switch]$ForceKillPorts
 )
@@ -88,9 +89,12 @@ $BackendExtras = ((Get-EnvOrDefault "BACKEND_EXTRAS" "web,azure,deepseek,aidc") 
 $NpmInstall = if ($ForceInstall) { "always" } else { Get-EnvOrDefault "NPM_INSTALL" "auto" }
 $SkipBuild = ConvertTo-Bool (Get-EnvOrDefault "SKIP_BUILD" "0")
 $AllowForceKillPorts = $ForceKillPorts -or (ConvertTo-Bool (Get-EnvOrDefault "FORCE_KILL_PORTS" "0"))
-$GitPullMode = if ($SkipGitPull) { "never" } else { Get-EnvOrDefault "GIT_PULL" "auto" }
+$GitPullMode = if ($SkipGitPull) { "never" } elseif ($RequireGitPull) { "always" } else { Get-EnvOrDefault "GIT_PULL" "auto" }
 $GitRemote = Get-EnvOrDefault "GIT_REMOTE" "origin"
 $GitBranch = Get-EnvOrDefault "GIT_BRANCH" ""
+$GitRetries = [Math]::Max(1, [int](Get-EnvOrDefault "GIT_RETRIES" "3"))
+$GitRetryDelay = [Math]::Max(0, [int](Get-EnvOrDefault "GIT_RETRY_DELAY" "3"))
+$GitHttpVersion = Get-EnvOrDefault "GIT_HTTP_VERSION" "HTTP/1.1"
 
 $BackendPidFile = Join-Path $RunDir "backend.pid"
 $FrontendPidFile = Join-Path $RunDir "frontend.pid"
@@ -141,12 +145,34 @@ function Invoke-GitUpdate {
         if ($dirty) { throw "存在未提交的已跟踪修改，拒绝 git pull：`n$dirty" }
 
         $targetBranch = if ($GitBranch) { $GitBranch } else { $currentBranch }
-        Write-Log "更新代码：git fetch --prune $GitRemote"
-        & $script:GitBin fetch --prune $GitRemote
-        if ($LASTEXITCODE -ne 0) { throw "git fetch 失败；旧服务保持运行。" }
-        Write-Log "更新代码：git pull --ff-only $GitRemote $targetBranch"
-        & $script:GitBin pull --ff-only $GitRemote $targetBranch
-        if ($LASTEXITCODE -ne 0) { throw "git pull --ff-only 失败；旧服务保持运行。" }
+        $updated = $false
+        for ($attempt = 1; $attempt -le $GitRetries; $attempt++) {
+            Write-Log "更新代码（第 $attempt/$GitRetries 次）：git fetch --prune $GitRemote，HTTP=$GitHttpVersion"
+            & $script:GitBin -c "http.version=$GitHttpVersion" fetch --prune $GitRemote
+            $fetchOk = $LASTEXITCODE -eq 0
+            if ($fetchOk) {
+                Write-Log "更新代码：git pull --ff-only $GitRemote $targetBranch"
+                & $script:GitBin -c "http.version=$GitHttpVersion" pull --ff-only $GitRemote $targetBranch
+                if ($LASTEXITCODE -eq 0) {
+                    $updated = $true
+                    break
+                }
+            }
+
+            if ($attempt -lt $GitRetries) {
+                $delay = $GitRetryDelay * $attempt
+                Write-WarnLog "Git 更新失败，${delay}s 后重试；当前服务尚未停止。"
+                if ($delay -gt 0) { Start-Sleep -Seconds $delay }
+            }
+        }
+
+        if (-not $updated) {
+            $localCommit = (& $script:GitBin rev-parse --short HEAD 2>$null | Out-String).Trim()
+            if ($mode -eq "always") {
+                throw "Git 更新在 $GitRetries 次尝试后仍失败；本地 commit=$localCommit；旧服务保持运行。"
+            }
+            Write-WarnLog "Git 更新失败，GIT_PULL=auto：继续使用本地 commit=$localCommit。要强制更新成功才运行，请使用 -RequireGitPull 或 GIT_PULL=always。"
+        }
     }
     finally { Pop-Location }
 }
@@ -177,30 +203,65 @@ function Get-FrontendFingerprint {
     return Get-Sha256Text ((Get-Content $dependencyFile -Raw) + "`n$npmVersion")
 }
 
-function Test-BackendImports {
+function Get-BackendImportTargets {
     $extras = ",$BackendExtras,"
     $modules = @("fastapi", "uvicorn")
     if ($extras.Contains(",azure,")) { $modules += @("openai", "azure.identity", "dotenv") }
     if ($extras.Contains(",deepseek,")) { $modules += @("openai", "dotenv") }
     if ($extras.Contains(",aidc,")) { $modules += @("agents", "pydantic", "azure.identity", "dotenv") }
-    $modules = $modules | Select-Object -Unique
+    $modules += "tsgo.web.app"
+    if ($extras.Contains(",aidc,")) { $modules += "tsgo.aidc_progress" }
+    return @($modules | Select-Object -Unique)
+}
 
+function Test-BackendImports {
+    param([switch]$Quiet)
+
+    $targets = Get-BackendImportTargets
     $code = @'
 import importlib
 import sys
+import traceback
+
+failed = False
+print(f"python={sys.executable}")
+print(f"version={sys.version}")
 for name in dict.fromkeys(sys.argv[1:]):
-    importlib.import_module(name)
-importlib.import_module("tsgo.web.app")
-if "agents" in sys.argv[1:]:
-    importlib.import_module("tsgo.aidc_progress")
+    try:
+        module = importlib.import_module(name)
+        location = getattr(module, "__file__", None)
+        print(f"[OK] {name}" + (f" -> {location}" if location else ""))
+    except Exception:
+        failed = True
+        print(f"[FAIL] {name}", file=sys.stderr)
+        traceback.print_exc()
+raise SystemExit(1 if failed else 0)
 '@
+
     $oldPythonPath = $env:PYTHONPATH
     $env:PYTHONPATH = if ($oldPythonPath) { (Join-Path $RootDir "src") + ";" + $oldPythonPath } else { Join-Path $RootDir "src" }
     try {
-        & $PythonBin -c $code @modules *> $null
-        return $LASTEXITCODE -eq 0
+        $output = & $script:PythonBin -c $code @targets 2>&1
+        $success = $LASTEXITCODE -eq 0
+        if (-not $Quiet) {
+            foreach ($line in $output) {
+                if ($line.ToString().StartsWith("[FAIL]") -or $line.ToString().StartsWith("Traceback")) {
+                    Write-Host $line -ForegroundColor Red
+                }
+                elseif ($line.ToString().StartsWith("[OK]")) {
+                    Write-Host $line -ForegroundColor DarkGreen
+                }
+                else {
+                    Write-Host $line
+                }
+            }
+        }
+        return $success
     }
-    catch { return $false }
+    catch {
+        if (-not $Quiet) { Write-WarnLog "导入诊断命令自身执行失败：$($_.Exception.Message)" }
+        return $false
+    }
     finally { $env:PYTHONPATH = $oldPythonPath }
 }
 
@@ -218,8 +279,8 @@ function Install-BackendDependencies {
             Write-Log "pyproject/Python/extras 已变化，需要更新后端依赖"
             $shouldInstall = $true
         }
-        elseif (-not (Test-BackendImports)) {
-            Write-Log "检测到缺失的后端依赖"
+        elseif (-not (Test-BackendImports -Quiet)) {
+            Write-Log "检测到缺失或导入失败的后端依赖"
             $shouldInstall = $true
         }
     }
@@ -233,7 +294,9 @@ function Install-BackendDependencies {
         }
         finally { Pop-Location }
     }
+
     if (-not (Test-BackendImports)) {
+        Write-WarnLog "上方已经列出具体失败模块和 Python traceback。"
         if ($mode -eq "never") { throw "后端依赖不完整；设置 BACKEND_INSTALL=auto 或手工安装 extras。" }
         throw "后端依赖安装后仍无法导入。"
     }
@@ -244,7 +307,7 @@ function Test-FrontendDependencies {
     if (-not (Test-Path (Join-Path $WebDir "node_modules"))) { return $false }
     Push-Location $WebDir
     try {
-        & $NpmBin ls --depth=0 *> $null
+        & $script:NpmBin ls --depth=0 *> $null
         return $LASTEXITCODE -eq 0
     }
     finally { Pop-Location }
@@ -288,7 +351,7 @@ function Build-Frontend {
     Write-Log "构建并校验前端"
     Push-Location $WebDir
     try {
-        & $NpmBin run build
+        & $script:NpmBin run build
         if ($LASTEXITCODE -ne 0) { throw "前端构建失败。" }
     }
     finally { Pop-Location }
@@ -391,7 +454,7 @@ function Start-Backend {
     $oldPythonPath = $env:PYTHONPATH
     $env:PYTHONPATH = if ($oldPythonPath) { (Join-Path $RootDir "src") + ";" + $oldPythonPath } else { Join-Path $RootDir "src" }
     try {
-        $process = Start-Process $PythonBin -ArgumentList $arguments -WorkingDirectory $RootDir -NoNewWindow -PassThru `
+        $process = Start-Process $script:PythonBin -ArgumentList $arguments -WorkingDirectory $RootDir -NoNewWindow -PassThru `
             -RedirectStandardOutput $BackendLog -RedirectStandardError $BackendErrorLog
         Set-Content $BackendPidFile $process.Id -Encoding ASCII
     }
@@ -405,7 +468,7 @@ function Start-Frontend {
     if (-not (Test-Path $vitePath)) { throw "缺少 Vite：$vitePath" }
     $quotedVitePath = '"' + $vitePath + '"'
     $arguments = @($quotedVitePath, "--host", $FrontendHost, "--port", "$FrontendPort")
-    $process = Start-Process $NodeBin -ArgumentList $arguments -WorkingDirectory $WebDir -NoNewWindow -PassThru `
+    $process = Start-Process $script:NodeBin -ArgumentList $arguments -WorkingDirectory $WebDir -NoNewWindow -PassThru `
         -RedirectStandardOutput $FrontendLog -RedirectStandardError $FrontendErrorLog
     Set-Content $FrontendPidFile $process.Id -Encoding ASCII
 }
@@ -504,7 +567,7 @@ function Start-Services {
 }
 
 function Restart-Services {
-    # 更新、安装和构建失败时，旧服务不会先被停止。
+    # Git、依赖和构建失败时，旧服务不会先被停止。
     Invoke-GitUpdate
     Prepare-Runtime
     Stop-Services
@@ -527,8 +590,17 @@ function Invoke-Doctor {
         try { Write-Log "$command -> $(Resolve-CommandPath $command)" }
         catch { Write-WarnLog $_.Exception.Message; $failed = $true }
     }
-    if (-not (Test-BackendImports)) { Write-WarnLog "后端依赖不可导入"; $failed = $true }
-    if (-not (Test-FrontendDependencies)) { Write-WarnLog "前端依赖不完整"; $failed = $true }
+
+    try { $script:PythonBin = Resolve-CommandPath $PythonBin } catch { $failed = $true }
+    if ($script:PythonBin -and -not (Test-BackendImports)) {
+        Write-WarnLog "后端依赖不可导入"
+        $failed = $true
+    }
+    try { $script:NpmBin = Resolve-CommandPath $NpmBin } catch { $failed = $true }
+    if ($script:NpmBin -and -not (Test-FrontendDependencies)) {
+        Write-WarnLog "前端依赖不完整"
+        $failed = $true
+    }
     if (-not (Test-Path (Join-Path $RootDir ".env"))) { Write-WarnLog "未发现 .env" }
     Show-Status
     if ($failed) { throw "环境检查未通过" }
@@ -551,21 +623,26 @@ function Show-Usage {
   pwsh -File .\scripts\restart_web.ps1 [restart|start|stop|status|logs|install|doctor]
 
 默认 restart：
-  1. 检查已跟踪修改并执行 git fetch --prune + git pull --ff-only
+  1. Git 使用 HTTP/1.1，最多重试 3 次；auto 模式失败后继续使用本地代码
   2. 自动安装/校验后端 extras：web,azure,deepseek,aidc
-  3. 自动安装/校验 npm 依赖并执行 npm run build
-  4. 只停止本仓库旧 Uvicorn/Vite 进程
-  5. 启动后端和前端并执行 HTTP 健康检查
+  3. 导入失败时逐模块输出 [FAIL] 和完整 Python traceback
+  4. 自动安装/校验 npm 依赖并执行 npm run build
+  5. 只停止本仓库旧 Uvicorn/Vite 进程
+  6. 启动后端和前端并执行 HTTP 健康检查
 
 开关：
-  -SkipGitPull    跳过 git pull
-  -ForceInstall   强制安装 Python/npm 依赖
-  -ForceKillPorts 允许终止无关端口进程
+  -SkipGitPull     跳过 git pull
+  -RequireGitPull  Git 更新失败则退出；不使用本地旧代码
+  -ForceInstall    强制安装 Python/npm 依赖
+  -ForceKillPorts  允许终止无关端口进程
 
 环境变量：
   GIT_PULL=auto | always | never
   GIT_REMOTE=origin
   GIT_BRANCH=main
+  GIT_RETRIES=3
+  GIT_RETRY_DELAY=3
+  GIT_HTTP_VERSION=HTTP/1.1
   PYTHON_BIN=python
   NPM_BIN=npm.cmd
   NODE_BIN=node.exe
