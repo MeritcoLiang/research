@@ -1,0 +1,13 @@
+{
+  "name": "AWS Stone Ridge",
+  "county": "Loudoun County",
+  "state": "Virginia",
+  "aliases": [
+    "Reeds Farm Lane"
+  ],
+  "location_hints": [
+    "Stone Ridge"
+  ],
+  "as_of_date": "2026-07-14",
+  "lookback_years": 8
+}
