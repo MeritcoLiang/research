@@ -2,6 +2,8 @@
 
 `scripts/restart_web.ps1` 是 Windows PowerShell 5.1 / PowerShell 7 版本的一键部署脚本。默认 `restart` 会依次完成 Git 更新、依赖检查、前端构建、旧进程回收、服务启动和 HTTP 健康检查。
 
+该脚本不会注册 Windows Service，也不会配置开机自启。前后端是当前用户手动启动的普通进程，机器重启或用户登录后需要再次执行 `start` 或 `restart`。
+
 ## 最常用命令
 
 Windows PowerShell 5.1：
@@ -245,8 +247,10 @@ node.exe web\node_modules\vite\bin\vite.js
 .\scripts\restart_web.ps1 start
 .\scripts\restart_web.ps1 stop
 .\scripts\restart_web.ps1 status
+.\scripts\restart_web.ps1 test
 .\scripts\restart_web.ps1 logs
 .\scripts\restart_web.ps1 install
+.\scripts\restart_web.ps1 uninstall
 .\scripts\restart_web.ps1 doctor
 .\scripts\restart_web.ps1 help
 ```
@@ -278,6 +282,28 @@ $env:STARTUP_TIMEOUT = "60"
 ```
 
 前后端任一启动失败，脚本会清理另一端并显示日志。
+
+只做一次简单可用性测试（不更新代码、不安装依赖、不构建）：
+
+```powershell
+.\scripts\restart_web.ps1 test
+```
+
+测试分别请求后端 `/openapi.json` 和前端 `/`；任一请求失败时命令返回退出码 `1`，适合手工验证或被其他脚本调用。
+
+## 卸载
+
+```powershell
+.\scripts\restart_web.ps1 uninstall
+```
+
+卸载会：
+
+- 只停止 PID 文件记录的本项目 Uvicorn/Vite 进程；
+- 从当前 Python 环境卸载 `thought-state-graph-orchestration` 项目包；
+- 删除 `web\node_modules`、`web\dist` 和 `%LOCALAPPDATA%\tsgo-web` 运行目录。
+
+源码、`.env`、lock 文件和可能由其他项目共享的第三方 Python 包会保留。因为 Windows 版本不注册系统服务，所以不需要管理员权限或额外删除服务。
 
 ## 端口安全
 

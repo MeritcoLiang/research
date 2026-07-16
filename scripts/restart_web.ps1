@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("restart", "start", "stop", "status", "logs", "install", "doctor", "help")]
+    [ValidateSet("restart", "start", "stop", "status", "test", "logs", "install", "uninstall", "doctor", "help")]
     [string]$Action = "restart",
     [switch]$SkipGitPull,
     [switch]$RequireGitPull,
@@ -452,6 +452,12 @@ function Stop-Services {
     Release-Port "后端" $BackendPort "uvicorn tsgo.web.app:app"
 }
 
+function Stop-ManagedProcesses {
+    # 卸载时只停止 PID 文件明确记录的本项目进程，不碰恰好占用相同端口的其他程序。
+    Stop-PidFileProcess "前端" $FrontendPidFile "vite.js"
+    Stop-PidFileProcess "后端" $BackendPidFile "uvicorn tsgo.web.app:app"
+}
+
 function Start-Backend {
     Set-Content $BackendLog "" -Encoding UTF8
     Set-Content $BackendErrorLog "" -Encoding UTF8
@@ -525,6 +531,24 @@ function Show-Status {
     Write-Host "frontend error log:$FrontendErrorLog"
 }
 
+function Invoke-ServiceTest {
+    $failed = $false
+    foreach ($target in @(
+        @{ Name = "后端"; Url = $BackendHealthUrl },
+        @{ Name = "前端"; Url = $FrontendHealthUrl }
+    )) {
+        if (Test-HttpReady $target.Url) {
+            Write-Host ("[OK]   {0}: {1}" -f $target.Name, $target.Url) -ForegroundColor Green
+        }
+        else {
+            Write-Host ("[FAIL] {0}: {1}" -f $target.Name, $target.Url) -ForegroundColor Red
+            $failed = $true
+        }
+    }
+    if ($failed) { throw "服务测试未通过" }
+    Write-Log "服务测试通过"
+}
+
 function Show-FailureLogs {
     foreach ($path in @($BackendLog, $BackendErrorLog, $FrontendLog, $FrontendErrorLog)) {
         Write-Host "`n===== $path ====="
@@ -589,6 +613,48 @@ function Install-Dependencies {
     Write-Log "代码更新和依赖检查完成"
 }
 
+function Assert-SafeRemovalPath {
+    param([string]$Path)
+    $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $protectedPaths = @(
+        $RootDir.TrimEnd('\'),
+        $WebDir.TrimEnd('\'),
+        $PSScriptRoot.TrimEnd('\'),
+        ([System.IO.Path]::GetPathRoot($fullPath)).TrimEnd('\')
+    )
+    if ($protectedPaths -contains $fullPath) {
+        throw "拒绝删除受保护目录：$fullPath；请修正 TSGO_RUN_DIR。"
+    }
+}
+
+function Uninstall-LocalRuntime {
+    Write-Log "停止本脚本手动启动的进程"
+    Stop-ManagedProcesses
+
+    try {
+        $script:PythonBin = Resolve-CommandPath $PythonBin
+        Write-Log "卸载当前 Python 环境中的项目包（保留共享的第三方依赖）"
+        & $script:PythonBin -m pip uninstall -y thought-state-graph-orchestration
+        if ($LASTEXITCODE -ne 0) { throw "Python 项目包卸载失败。" }
+    }
+    catch {
+        Write-WarnLog "Python 项目包未能卸载：$($_.Exception.Message)"
+    }
+
+    foreach ($path in @(
+        (Join-Path $WebDir "node_modules"),
+        (Join-Path $WebDir "dist"),
+        $RunDir
+    )) {
+        if (Test-Path -LiteralPath $path) {
+            Assert-SafeRemovalPath $path
+            Write-Log "删除：$path"
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
+    }
+    Write-Log "卸载完成；源码、.env、package-lock.json 和共享第三方 Python 包均已保留"
+}
+
 function Invoke-Doctor {
     $failed = $false
     Write-Log "检查 Windows 运行环境"
@@ -625,8 +691,17 @@ function Show-Logs {
 function Show-Usage {
 @"
 用法：
-  powershell -ExecutionPolicy Bypass -File .\scripts\restart_web.ps1 [restart|start|stop|status|logs|install|doctor]
-  pwsh -File .\scripts\restart_web.ps1 [restart|start|stop|status|logs|install|doctor]
+  powershell -ExecutionPolicy Bypass -File .\scripts\restart_web.ps1 [restart|start|stop|status|test|logs|install|uninstall|doctor]
+  pwsh -File .\scripts\restart_web.ps1 [restart|start|stop|status|test|logs|install|uninstall|doctor]
+
+Windows 运行方式：
+  不注册 Windows Service，也不设置开机自启；登录后使用 start/restart 手动启动。
+
+常用动作：
+  start      手动启动前后端
+  stop       停止本脚本启动的前后端
+  test       只对前后端执行简单 HTTP 测试，不安装、不构建
+  uninstall  停止进程，卸载项目包并删除 node_modules、dist 和运行目录
 
 默认 restart：
   1. Git 使用 HTTP/1.1，最多重试 3 次；auto 模式失败后继续使用本地代码
@@ -668,8 +743,10 @@ try {
         "start" { Invoke-GitUpdate; Prepare-Runtime; Start-Services }
         "stop" { Stop-Services; Show-Status }
         "status" { Show-Status }
+        "test" { Invoke-ServiceTest }
         "logs" { Show-Logs }
         "install" { Install-Dependencies }
+        "uninstall" { Uninstall-LocalRuntime }
         "doctor" { Invoke-Doctor }
         "help" { Show-Usage }
     }
